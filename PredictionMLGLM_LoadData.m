@@ -40,9 +40,13 @@ hdC = hdCellStats(:,end)==1;
 
 %Who were the hd cells recorded in the thalamus?
 thIx = hdC & ismember(shank,shankStructure{'thalamus'});
+%ordering their prefered direction
+[~,prefAngThIx] = sort(hdCellStats(thIx,1));
 
 %Who were the hd cells recorded in the postsub?
 poIx = hdC & ismember(shank,shankStructure{'postsub'});
+%ordering their prefered direction
+[~,prefAngPoIx] = sort(hdCellStats(poIx,1));
 
 %Restrict exploration to times were the head-direction was correctly
 %detected (you need to detect the blue and red leds, sometimes one of  the
@@ -84,11 +88,11 @@ xlimEp  = [tStart(1) tEnd(end)];
 figure(1),clf
 set(gcf,'Position',[100 145 1618 797])
 subplot(6,1,1)
-    imagesc(Range(Q,'min'),(1:sum(thIx)),dQadn');
+    imagesc(Range(Q,'min'),(1:sum(thIx)),dQadn(:,prefAngThIx)');
     xlim(xlimEp);
     ylabel('ADn cells')
 subplot(6,1,2)
-    imagesc(Range(Q,'min'),(1:sum(poIx)),dQpos');
+    imagesc(Range(Q,'min'),(1:sum(poIx)),dQpos(:,prefAngPoIx)');
     xlim(xlimEp);
     ylabel('PoS cells')
 subplot(6,1,3)
