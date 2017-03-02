@@ -77,25 +77,35 @@ dQpos   = dQ(:,poIx);
 dQadn   = gaussFilt(dQadn,5,0);
 dQpos   = gaussFilt(dQpos,5,0);
 
+tStart  = Start(wakeEp,'min');
+tEnd    = End(wakeEp,'min');
+xlimEp  = [tStart(1) tEnd(end)];
+
 figure(1),clf
 set(gcf,'Position',[100 145 1618 797])
 subplot(6,1,1)
     imagesc(Range(Q,'min'),(1:sum(thIx)),dQadn');
+    xlim(xlimEp);
     ylabel('ADn cells')
 subplot(6,1,2)
     imagesc(Range(Q,'min'),(1:sum(poIx)),dQpos');
+    xlim(xlimEp);
     ylabel('PoS cells')
 subplot(6,1,3)
     plot(Range(X,'min'),Data(X));
+    xlim(xlimEp);
     ylabel('X pos (cm)')
 subplot(6,1,4)
     plot(Range(Y,'min'),Data(Y));
+    xlim(xlimEp);
     ylabel('Y pos (cm)')
 subplot(6,1,5)
     plot(Range(ang,'min'),Data(ang));
+    xlim(xlimEp);
     ylabel('HD (rad)')
 subplot(6,1,6)
     plot(Range(linSpd,'min'),Data(linSpd));
+    xlim(xlimEp);
     ylabel('speed (cm/s)')
     
 %Note to regress spike Data to position, you need to get the same timestamps for the two measures. Easy:
