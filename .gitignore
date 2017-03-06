@@ -46,3 +46,10 @@ Network Trash Folder
 Temporary Items
 .apdisk
 *.asv
+
+# ==========================
+# Guillaume 
+# ==========================
+*.pdf
+*.pyc
+

@@ -1,0 +1,101 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage[left=2cm,right=2cm,top=2cm,bottom=2cm]{geometry}
+\author{Guillaume Viejo}
+\title{Reports for Prediction_ML_GLM}
+\renewcommand{\thesubsection}{\arabic{subsection}}
+\begin{document}
+
+Reports for 
+
+\textbf{Modern machine learning far outperforms GLMs at predicting spikes} 
+
+by Benjamin et al, 2017
+
+Benchmarking with Post-subiculum (Pos) and Antero-dorsal nucleus (ADn) recordings. Data can be found in $~/Dropbox/Peyrache\ Lab\ Team\ Folder/Data/HDCellData/data\_test\_boosted\_tree.mat$
+
+\tableofcontents
+
+\subsection{Features: Cosinus and sinus of the head direction \\ Target : Pos and ADn}
+
+
+\begin{figure}[htbp]
+	\begin{center}
+		\includegraphics[width=0.3\linewidth]{../figures/1_PR2_feat_cos_sin_targ_pos_adn.pdf} 
+	\end{center}
+\end{figure}
+
+\subsection{Features : Cos, Sin, X position, Y position, Ang (rad), Velocity \\ Target : Pos and ADn}
+
+\begin{figure}[htbp]
+	\begin{center}
+		\includegraphics[width=0.3\linewidth]{../figures/2_PR2_feat_all_targ_pos_adn.pdf} 
+	\end{center}
+\end{figure}
+
+\subsection{Features : X position, Y position, Ang (rad), Velocity \\ Target : Pos and ADn}
+
+\begin{figure}[htbp]
+	\begin{center}
+		\includegraphics[width=0.3\linewidth]{../figures/3_PR2_feat_raw_targ_pos_adn.pdf} 
+	\end{center}
+\end{figure}
+
+\subsection{Features : Pos firing rate \\ Target : ADn firing rate}
+
+\begin{figure}[htbp]
+	\begin{center}
+		\includegraphics[width=0.3\linewidth]{../figures/4_PR2_feat_pos_targ_adn.pdf} 
+	\end{center}
+\end{figure}
+
+\subsection{Features : ADn firing rate \\ Target : POS firing rate}
+
+\begin{figure}[htbp]
+	\begin{center}
+		\includegraphics[width=0.3\linewidth]{../figures/5_PR2_feat_adn_targ_pos.pdf} 
+	\end{center}
+\end{figure}
+
+\subsection{Features : Cos, Sin, Pos \\ Target : POS firing rate}
+
+\begin{figure}[htbp]
+	\begin{center}
+		\includegraphics[width=0.3\linewidth]{../figures/6_PR2_feat_cos_sin_pos_targ_adn.pdf} 
+	\end{center}
+\end{figure}
+
+\subsection{Features : Cos, Sin, ADn \\ Target : Pos firing rate}
+
+\begin{figure}[htbp]
+	\begin{center}
+		\includegraphics[width=0.3\linewidth]{../figures/7_PR2_feat_cos_sin_adn_targ_pos.pdf} 
+	\end{center}
+\end{figure}
+
+\subsection{Features : All + Pos \\ Target : ADn firing rate}
+
+\begin{figure}[htbp]
+	\begin{center}
+		\includegraphics[width=0.3\linewidth]{../figures/7_PR2_feat_cos_sin_adn_targ_pos.pdf} 
+	\end{center}
+\end{figure}
+
+\subsection{Features : All + ADn \\ Target : Pos firing rate}
+
+\begin{figure}[htbp]
+	\begin{center}
+		\includegraphics[width=0.3\linewidth]{../figures/7_PR2_feat_cos_sin_adn_targ_pos.pdf} 
+	\end{center}
+\end{figure}
+
+
+
+
+
+\end{document}
