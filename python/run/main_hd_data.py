@@ -38,7 +38,8 @@ import scipy.io
 import numpy as np
 from fonctions import *
 import sys, os
-
+import itertools
+import cPickle as pickle
 
 
 #####################################################################
@@ -71,9 +72,28 @@ print('Features are:\n %s' %list(data.drop('time', axis=1).keys()))
 methods = ['glm_pyglmnet', 'nn', 'xgb_run', 'ens']
 colors=['#F5A21E', '#02A68E', '#EF3E34', '#134B64', '#FF07CD','b']
 labels = ['GLM', 'NN', 'XGB','Ens.\n (XGBoost)']
+
 #######################################################################
 # FONCTIONS DEFINITIONS
 #######################################################################
+def fit_cv_star(n, X, Y):
+	# Break Y data for 4 cores
+	index = np.arange(Y.shape[1])
+	index = np.array_split(index, 4)[n]	
+	Y_smaller = Y[:,index]
+	tmp = {'Yt_hat':[], 'PR2':[]}
+	for i in xrange(Y_smaller.shape[1]):
+		y = Y_smaller[:,i]
+		Yt_hat, PR2 = fit_cv(X, y, algorithm = 'glm_pyglmnet', n_cv=8, verbose=1)	    
+		tmp['Yt_hat'].append(Yt_hat)
+		tmp['PR2'].append(PR2)
+	tmp['Yt_hat'] = np.array(tmp['Yt_hat'])
+	tmp['PR2'] = np.array(tmp['PR2'])
+	return tmp
+
+def glm_parallel(a_b):
+	return fit_cv_star(*a_b)
+
 def test_features(features, targets, learners = ['glm_pyglmnet', 'nn', 'xgb_run', 'ens']):
 	'''
 		Main function of the script
@@ -82,18 +102,29 @@ def test_features(features, targets, learners = ['glm_pyglmnet', 'nn', 'xgb_run'
 	X = data[features].values
 	Y = data[targets].values	
 	Models = {method:{'PR2':[],'Yt_hat':[]} for method in learners}
+	learners_ = list(learners)
 
+	# Special case for glm_pyglmnet to go parallel
+	if 'glm_pyglmnet' in learners:
+		print('Running glm_pyglmnet...')				
+		# # Map the targets for 4 cores by splitting Y in 4 parts
+		pool = multiprocessing.Pool(processes = 4)
+		value = pool.map(glm_parallel, itertools.izip(range(4), itertools.repeat(X), itertools.repeat(Y)))
+		Models['glm_pyglmnet']['Yt_hat'] = np.vstack([value[i]['Yt_hat'] for i in xrange(4)])
+		Models['glm_pyglmnet']['PR2'] = np.vstack([value[i]['PR2'] for i in xrange(4)])		
+		learners_.remove('glm_pyglmnet')		
 
 	for i in xrange(Y.shape[1]):
 		y = Y[:,i]
 		# TODO : make sure that 'ens' is the last learner
-		for method in learners:
-			if method != 'ens': # FIRST STAGE LEARNING	
+		for method in learners_:
+			if method != 'ens': # FIRST STAGE LEARNING			
 				print('Running '+method+'...')				
 				Yt_hat, PR2 = fit_cv(X, y, algorithm = method, n_cv=8, verbose=1)	    
 				Models[method]['Yt_hat'].append(Yt_hat)
-				Models[method]['PR2'].append(PR2)
-			else: # SECOND STAGE LEARNING
+				Models[method]['PR2'].append(PR2)			
+
+			elif method == 'ens': # SECOND STAGE LEARNING				
 				X_ens = np.transpose(np.array([Models[m]['Yt_hat'][i] for m in learners if m != method]))
 				#We can use XGBoost as the 2nd-stage model
 				Yt_hat, PR2 = fit_cv(X_ens, y, algorithm = 'xgb_run', n_cv=8, verbose=1)		
@@ -114,42 +145,42 @@ combination = {
 		 	'features' 	:	['cos', 'sin'],
 			'targets'	:	[i for i in list(data) if i.split(".")[0] in ['Pos', 'ADn']], # all neurons
 			'figure'	:	'../../figures/1_PR2_feat_cos_sin_targ_pos_adn.pdf'
-		}
+		},
 	2:	{
 			'features' 	:	['ang', 'x', 'y', 'vel', 'cos', 'sin'],
 			'targets'	:	[i for i in list(data) if i.split(".")[0] in ['Pos', 'ADn']], # all neurons
 			'figure'	:	'../../figures/2_PR2_feat_all_targ_pos_adn.pdf'
-		}
+		},
 	3:	{
 			'features' 	:	['ang', 'x', 'y', 'vel'],
 			'targets'	:	[i for i in list(data) if i.split(".")[0] in ['Pos', 'ADn']], # all neurons
 			'figure'	:	'../../figures/3_PR2_feat_raw_targ_pos_adn.pdf'
-		}
+		},
 	4:	{
 			'features' 	:	[i for i in list(data) if i.split(".")[0] in ['Pos']],
 			'targets'	:	[i for i in list(data) if i.split(".")[0] in ['ADn']],
 			'figure'	:	'../../figures/4_PR2_feat_pos_targ_adn.pdf'
-		}
+		},
 	5:	{
 			'features' 	:	[i for i in list(data) if i.split(".")[0] in ['ADn']],
 			'targets'	:	[i for i in list(data) if i.split(".")[0] in ['Pos']], 
 			'figure'	:	'../../figures/5_PR2_feat_adn_targ_pos.pdf'
-		}
+		},
 	6:	{
 			'features' 	:	[i for i in list(data) if i.split(".")[0] in ['cos', 'sin', 'Pos']],
 			'targets'	:	[i for i in list(data) if i.split(".")[0] in ['ADn']],
 			'figure'	:	'../../figures/6_PR2_feat_cos_sin_pos_targ_adn.pdf'
-		}								
+		},								
 	7:	{
 			'features' 	:	[i for i in list(data) if i.split(".")[0] in ['cos', 'sin', 'ADn']],
 			'targets'	:	[i for i in list(data) if i.split(".")[0] in ['Pos']],
 			'figure'	:	'../../figures/7_PR2_feat_cos_sin_adn_targ_pos.pdf'
-		}		
+		},		
 	8:	{
 			'features' 	:	[i for i in list(data) if i.split(".")[0] in ['ang', 'x', 'y', 'vel', 'cos', 'sin', 'Pos']],
 			'targets'	:	[i for i in list(data) if i.split(".")[0] in ['ADn']],
 			'figure'	:	'../../figures/8_PR2_feat_all_pos_targ_adn.pdf'
-		}
+		},
 	9:	{
 			'features' 	:	[i for i in list(data) if i.split(".")[0] in ['ang', 'x', 'y', 'vel', 'cos', 'sin', 'ADn']],
 			'targets'	:	[i for i in list(data) if i.split(".")[0] in ['Pos']],
@@ -160,15 +191,18 @@ combination = {
 ########################################################################
 # MAIN LOOP
 ########################################################################
-for k in combination.iterkeys():
+for k in np.sort(combination.keys()):
 	features = combination[k]['features']
-	targets = combination[k]['targets']
+	targets = combination[k]['targets']	
 
 	results = test_features(features, targets)
+	
 	final_data[k] = results
 
 	plot_model_comparison(results, labels, colors)
 	savefig(combination[k]['figure'], dpi=900, bbox_inches = 'tight')
 	
-	with open("../data/Models_ML.pickle", 'wb') as f:
-		pickle.dump(final_data, f)
+	name = combination[k]['figure'].split("/")[-1].split(".")[0]
+	with open("../data/"+name+".pickle", 'wb') as f:
+		pickle.dump(final_data[k], f)
+
