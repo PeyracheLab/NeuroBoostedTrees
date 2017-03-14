@@ -52,4 +52,13 @@ Temporary Items
 # ==========================
 *.pdf
 *.pyc
-
+*.png
+*.aux
+*.log
+*.synctex.gz
+*.toc
+*.pickle
+*.log
+*.lof
+*.out
+*.lot

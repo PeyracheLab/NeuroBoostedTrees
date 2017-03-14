@@ -10,6 +10,7 @@ from keras.optimizers import Nadam
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.linear_model import LinearRegression
+import multiprocessing
 
 def simpleaxis(ax):
     ax.spines['top'].set_visible(False)
@@ -50,6 +51,8 @@ def fit_cv(X, Y, algorithm, n_cv=10, verbose=1):
     i=1
     Y_hat=np.zeros(len(Y))
     pR2_cv = list()
+    
+
     for idx_r, idx_t in skf:
         if verbose > 1:
             print( '...runnning cv-fold', i, 'of', n_cv)
@@ -57,13 +60,11 @@ def fit_cv(X, Y, algorithm, n_cv=10, verbose=1):
         Xr = X[idx_r, :]
         Yr = Y[idx_r]
         Xt = X[idx_t, :]
-        Yt = Y[idx_t]        
-        Yt_hat = eval(algorithm)(Xr, Yr, Xt)
+        Yt = Y[idx_t]           
+        Yt_hat = eval(algorithm)(Xr, Yr, Xt)        
         Y_hat[idx_t] = Yt_hat
-
         pR2 = poisson_pseudoR2(Yt, Yt_hat, np.mean(Yr))
         pR2_cv.append(pR2)
-
         if verbose > 1:
             print( 'pR2: ', pR2)
 
@@ -106,10 +107,9 @@ def glm_pyglmnet(Xr, Yr, Xt):
     			alpha=0.1, 
     			tol=1e-8, 
     			verbose=0,
-              	reg_lambda=np.logspace(np.log(0.05), np.log(0.0001), 10, 
-              	base=np.exp(1)),
-              	learning_rate=2, 
-              	max_iter=10000, 
+              	reg_lambda=np.logspace(np.log(0.05), np.log(0.0001), 4, base=np.exp(1)),
+              	learning_rate=0.1, 
+              	max_iter=60000, 
               	eta=2.0, 
               	random_state=1)
 
@@ -140,26 +140,33 @@ def xgb_run(Xr, Yr, Xt):
 
 def nn(Xr, Yr, Xt):
 
-    params = {'dropout': 0.5,
-              'l1': 0.0,
-              'l2': 0.0,
-              'n1': 1980, #number of layers in 1st hidden layer
-              'n2': 18}
-
     if np.ndim(Xr)==1:
         Xr = np.transpose(np.atleast_2d(Xr))
 
     model = Sequential()
-    model.add(Dense(params['n1'], input_dim=np.shape(Xr)[1], init='glorot_normal',
-                activation='relu', W_regularizer=l1l2(params['l1'],params['l2'])))
-    model.add(Dropout(params['dropout']))
-    model.add(Dense(params['n2'], init='glorot_normal'
-                    , activation='relu',W_regularizer=l1l2(params['l1'],params['l2'])))
-    model.add(Dense(1,activation='softplus'))
+
+    model.add(  Dense(1980, 
+                input_dim=np.shape(Xr)[1], 
+                init='glorot_normal',
+                activation='relu', 
+                W_regularizer=l1l2(0.0, 0.0))
+            )
+    model.add(  Dropout(0.5)
+            )
+    model.add(  Dense(18, 
+                init='glorot_normal',
+                activation='relu',
+                W_regularizer=l1l2(0.0, 0.0))
+            )
+    model.add(  Dense(1,
+                activation='softplus')
+                )
 
     optim = Nadam()
+
     model.compile(loss='poisson', optimizer=optim,)
-    hist = model.fit(Xr, Yr, batch_size = 32, nb_epoch=5, verbose=0, validation_split=0.0)
+
+    hist = model.fit(Xr, Yr, batch_size = 32, nb_epoch=5, verbose=1, validation_split=0.0)
     Yt = model.predict(Xt)[:,0]
     return Yt
 
@@ -190,3 +197,44 @@ def lin_comb(Xr, Yr, Xt):
     #rectify outputs
     Yt = np.maximum(Yt,np.zeros(Yt.shape))
     return Yt    
+
+def mb_100(Xr, Yr, Xt, nb_bins = 100):
+    '''
+        Build a tuning curve Yr = hist(Xr) 
+        and predict Yt for each Xt point
+        TODO : Xr in several dimensions or other than angular 
+        TODO : find the function in numpy to do it        
+    '''    
+    bins = np.linspace(np.vstack((Xr, Xt)).min(), np.vstack((Xr, Xt)).max()+1e-8, nb_bins+1)
+    index = np.digitize(Xr, bins).flatten()    
+    tcurve = np.array([np.mean(Yr[index == i]) for i in xrange(1, nb_bins+1)])  
+    new_index = np.digitize(Xt, bins).flatten()    
+    return tcurve[new_index-1]
+
+# TOO LAZY TO RECHANGE LET'S NAME MB WITH DIFFERENT NAMES
+
+def mb_1000(Xr, Yr, Xt, nb_bins = 1000):
+    '''
+        Build a tuning curve Yr = hist(Xr) 
+        and predict Yt for each Xt point
+        TODO : Xr in several dimensions or other than angular 
+        TODO : find the function in numpy to do it        
+    '''    
+    bins = np.linspace(np.vstack((Xr, Xt)).min(), np.vstack((Xr, Xt)).max()+1e-8, nb_bins+1)
+    index = np.digitize(Xr, bins).flatten()    
+    tcurve = np.array([np.mean(Yr[index == i]) for i in xrange(1, nb_bins+1)])  
+    new_index = np.digitize(Xt, bins).flatten()    
+    return tcurve[new_index-1]
+
+def mb_10(Xr, Yr, Xt, nb_bins = 10):
+    '''
+        Build a tuning curve Yr = hist(Xr) 
+        and predict Yt for each Xt point
+        TODO : Xr in several dimensions or other than angular 
+        TODO : find the function in numpy to do it        
+    '''    
+    bins = np.linspace(np.vstack((Xr, Xt)).min(), np.vstack((Xr, Xt)).max()+1e-8, nb_bins+1)
+    index = np.digitize(Xr, bins).flatten()    
+    tcurve = np.array([np.mean(Yr[index == i]) for i in xrange(1, nb_bins+1)])  
+    new_index = np.digitize(Xt, bins).flatten()    
+    return tcurve[new_index-1]        
