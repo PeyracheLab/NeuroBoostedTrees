@@ -1,5 +1,5 @@
 import numpy as np
-from pylab import *
+# from pylab import *
 from sklearn.model_selection import KFold
 from pyglmnet import GLM
 import xgboost as xgb
@@ -19,6 +19,30 @@ def simpleaxis(ax):
     ax.get_yaxis().tick_left()
     ax.xaxis.set_tick_params(size=6)
     ax.yaxis.set_tick_params(size=6)
+
+def plot_model_comparison(models, labels, color, models_for_plot = ['glm_pyglmnet', 'nn', 'xgb_run', 'ens'], title=None, fs=12):
+    figure(figsize = figsize(1.0))
+    subplots_adjust(hspace = 0.1, wspace = 0.1)
+
+    simpleaxis(gca())
+
+    plot([-1, len(models_for_plot)], [0,0],'--k', alpha=0.4)
+
+    mean_pR2 = list()
+    sem_pR2 = list()
+    
+    for model in models_for_plot:        
+        PR2_art = models[model]['PR2']
+        mean_pR2.append(np.mean(PR2_art))
+        sem_pR2.append(np.std(PR2_art)/np.sqrt(np.size(PR2_art)))
+
+    bar(np.arange(np.size(mean_pR2)), mean_pR2, 0.8, align='center',
+            ecolor='k', alpha=.9, color=color, ec='w', yerr=np.array(sem_pR2),
+            tick_label=labels)
+    plot(np.arange(np.size(mean_pR2)), mean_pR2, 'k.', markersize=15)
+
+    ylabel('Pseudo-R2',fontsize=fs)
+
 
 def poisson_pseudoR2(y, yhat, ynull):
     # This is our scoring function. Implements pseudo-R2
@@ -73,33 +97,6 @@ def fit_cv(X, Y, algorithm, n_cv=10, verbose=1):
                                              np.std(pR2_cv)/np.sqrt(n_cv)))
 
     return Y_hat, pR2_cv
-
-def plot_model_comparison(models, labels, color, models_for_plot = ['glm_pyglmnet', 'nn', 'xgb_run', 'ens'], title=None, fs=12):
-    """Just makes a comparision bar plot."""
-    rcParams.update({   'backend':'pdf',
-                        'savefig.pad_inches':0.1})
-    figure(figsize = (7,5))
-    subplots_adjust(hspace = 0.1, wspace = 0.1)
-    plot([-1, len(models_for_plot)], [0,0],'--k', alpha=0.4)
-
-    mean_pR2 = list()
-    sem_pR2 = list()
-    
-    for model in models_for_plot:        
-        PR2_art = models[model]['PR2']
-        mean_pR2.append(np.mean(PR2_art))
-        sem_pR2.append(np.std(PR2_art)/np.sqrt(np.size(PR2_art)))
-
-    bar(np.arange(np.size(mean_pR2)), mean_pR2, 0.8, align='center',
-            ecolor='k', alpha=.9, color=color, ec='w', yerr=np.array(sem_pR2),
-            tick_label=labels)
-    plot(np.arange(np.size(mean_pR2)), mean_pR2, 'k.', markersize=15)
-
-    ylabel('Pseudo-R2',fontsize=fs)
-
-    simpleaxis(gca())
-    if title:
-        title(title)
 
 
 def glm_pyglmnet(Xr, Yr, Xt):
@@ -166,7 +163,7 @@ def nn(Xr, Yr, Xt):
 
     model.compile(loss='poisson', optimizer=optim,)
 
-    hist = model.fit(Xr, Yr, batch_size = 32, nb_epoch=5, verbose=1, validation_split=0.0)
+    hist = model.fit(Xr, Yr, batch_size = 32, nb_epoch=5, verbose=0, validation_split=0.0)
     Yt = model.predict(Xt)[:,0]
     return Yt
 
@@ -238,3 +235,31 @@ def mb_10(Xr, Yr, Xt, nb_bins = 10):
     tcurve = np.array([np.mean(Yr[index == i]) for i in xrange(1, nb_bins+1)])  
     new_index = np.digitize(Xt, bins).flatten()    
     return tcurve[new_index-1]        
+
+def mb_60(Xr, Yr, Xt):
+    '''
+        Build a tuning curve Yr = hist(Xr) 
+        and predict Yt for each Xt point
+        TODO : Xr in several dimensions or other than angular 
+        TODO : find the function in numpy to do it        
+    '''    
+    nb_bins = 60
+    bins = np.linspace(np.vstack((Xr, Xt)).min(), np.vstack((Xr, Xt)).max()+1e-8, nb_bins+1)
+    index = np.digitize(Xr, bins).flatten()    
+    tcurve = np.array([np.mean(Yr[index == i]) for i in xrange(1, nb_bins+1)])  
+    new_index = np.digitize(Xt, bins).flatten()    
+    return tcurve[new_index-1]      
+
+def mb_360(Xr, Yr, Xt):
+    '''
+        Build a tuning curve Yr = hist(Xr) 
+        and predict Yt for each Xt point
+        TODO : Xr in several dimensions or other than angular 
+        TODO : find the function in numpy to do it        
+    '''    
+    nb_bins = 360
+    bins = np.linspace(np.vstack((Xr, Xt)).min(), np.vstack((Xr, Xt)).max()+1e-8, nb_bins+1)
+    index = np.digitize(Xr, bins).flatten()    
+    tcurve = np.array([np.mean(Yr[index == i]) for i in xrange(1, nb_bins+1)])  
+    new_index = np.digitize(Xt, bins).flatten()    
+    return tcurve[new_index-1]          

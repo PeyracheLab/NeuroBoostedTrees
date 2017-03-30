@@ -10,8 +10,8 @@ data_dir = fullfile(path_to_data,dset);
 cd(data_dir);
 
 %Parameters
-binSize = 0.1; %in seconds
-
+binSize = 0.005; %in seconds
+%
 
 %when the animal was exploring the arena
 load('Analysis/BehavEpochs.mat','wakeEp');
@@ -79,7 +79,8 @@ dQ      = Data(Q);
 dQadn   = dQ(:,thIx);
 dQpos   = dQ(:,poIx);
 
-dQadn   = gaussFilt(dQadn,5,0);
+smWd = 2.^(0:8);
+dQadn   = gaussFilt(dQadn,5,0); 
 dQpos   = gaussFilt(dQpos,5,0);
 
 tStart  = Start(wakeEp,'min');
