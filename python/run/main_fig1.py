@@ -48,6 +48,7 @@ for i in xrange(adrien_data['ADn'].shape[1]): data['ADn'+'.'+str(i)] = adrien_da
 
 
 methods = ['mb_10', 'mb_60', 'mb_360', 'xgb_run', 'nn', 'lin_comb']
+
 colors=['#F5A21E', '#02A68E', '#EF3E34', '#134B64', '#FF07CD','b']
 
 #######################################################################
@@ -197,7 +198,7 @@ labels_plot = [labels[m] for m in methods[0:-1]]
 
 mean_pR2 = list()
 sem_pR2 = list()
-for model in methods[0:-1]:        
+for model in methods[0:-1]:            
     PR2_art = final_data['ADn'][model]['PR2']
     mean_pR2.append(np.mean(PR2_art))
     sem_pR2.append(np.std(PR2_art)/np.sqrt(np.size(PR2_art)))        
@@ -217,8 +218,8 @@ bar(np.arange(np.size(mean_pR2))+0.41, mean_pR2, 0.4, align='center',
         ecolor='k', alpha=.9, color='#F5A21E', ec='w', yerr=np.array(sem_pR2), label = 'Post-subiculum')
 plot(np.arange(np.size(mean_pR2))+0.41, mean_pR2, 'k.', markersize=5)
 
-legend(bbox_to_anchor=(0.5, 1.2), loc='upper center', ncol=2, frameon = False)
-xlim(-0.5, 4.5)
+# legend(bbox_to_anchor=(0.5, 1.2), loc='upper center', ncol=2, frameon = False)
+# xlim(-0.5, 4.5)
 # ylim(0.0, 0.8)
 xticks(np.arange(np.size(mean_pR2))+0.205, labels_plot)
 ylabel('Pseudo-R2')

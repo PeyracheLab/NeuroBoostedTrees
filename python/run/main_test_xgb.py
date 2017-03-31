@@ -113,11 +113,22 @@ bsts = {i:{} for i in combination.iterkeys()} # to keep the boosted tree
 params = {'objective': "count:poisson", #for poisson output
     'eval_metric': "logloss", #loglikelihood loss
     'seed': 2925, #for reproducibility
-    'silent': 1,
-    'learning_rate': 0.05,
-    'min_child_weight': 2, 'n_estimators': 580,
-    'subsample': 0.6, 'max_depth': 5, 'gamma': 0.4}        
-num_round = 100
+    'silent': 0,
+    'learning_rate': 0.1,
+    'min_child_weight': 2, 'n_estimators': 1,
+    'subsample': 0.6, 'max_depth': 1000, 'gamma': 0.01,
+    'reg_alpha': 0.0,
+    'reg_lambda':0.0}
+
+num_round = 1
+
+X = data['ang'].values
+Y = data['Pos.5']
+dtrain = xgb.DMatrix(np.vstack(X), label = np.vstack(Y))
+bst = xgb.train(params, dtrain, num_round)
+a = bst.get_dump()
+print a[0]
+sys.exit()
 
 for k in combination.keys():
 	features = combination[k]['features']
@@ -126,7 +137,7 @@ for k in combination.keys():
 	Yall = data[targets].values	
 	for i in xrange(Yall.shape[1]):
 		dtrain = xgb.DMatrix(X, label=Yall[:,i])
-		bst = xgb.train(params, dtrain, num_round)
+		bst = xgb.train(params, dtrain, num_round)		
 		bsts[k][targets[i]] = bst
 
 #####################################################################
