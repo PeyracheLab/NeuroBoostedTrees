@@ -4,7 +4,7 @@ dset = 'Mouse28/Mouse28-140313';
 %the same scripts, for example we could each have our own
 %PredictionMLGLM_Init.m where this is defined.
 %path_to_data = 'D:\Dropbox (Peyrache Lab)\Peyrache Lab Team Folder\Data\HDCellData';
-path_to_data = '~/Dropbox (Peyrache Lab)/Peyrache Lab Team Folder/Data/HDCellData/';
+path_to_data = '/home/guillaume/Dropbox (Peyrache Lab)/Peyrache Lab Team Folder/Data/HDCellData/';
 
 data_dir = fullfile(path_to_data,dset);
 cd(data_dir);

@@ -1,12 +1,22 @@
+import imp
 import numpy as np
 # from pylab import *
 from sklearn.model_selection import KFold
-from pyglmnet import GLM
 import xgboost as xgb
-from keras.models import Sequential
-from keras.layers.core import Dense, Dropout, Activation, Lambda
-from keras.regularizers import l1l2
-from keras.optimizers import Nadam
+try:
+    imp.find_module('pyglmnet')
+    from pyglmnet import GLM
+except ImportError:
+    pass
+try:
+    imp.find_module('keras')
+    from keras.models import Sequential
+    from keras.layers.core import Dense, Dropout, Activation, Lambda
+    from keras.regularizers import l1l2
+    from keras.optimizers import Nadam
+except ImportError:
+    pass
+
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.linear_model import LinearRegression
@@ -117,27 +127,25 @@ def glm_pyglmnet(Xr, Yr, Xt):
     return Yt
 
 def xgb_run(Xr, Yr, Xt):
+    # params = {'objective': "count:poisson", #for poisson output
+    # 'eval_metric': "logloss", #loglikelihood loss
+    # 'seed': 2925, #for reproducibility
+    # 'silent': 1,
+    # 'learning_rate': 0.05,
+    # 'min_child_weight': 2, 'n_estimators': 580,
+    # 'subsample': 0.6, 'max_depth': 5, 'gamma': 0.4}        
     params = {'objective': "count:poisson", #for poisson output
     'eval_metric': "logloss", #loglikelihood loss
     'seed': 2925, #for reproducibility
     'silent': 1,
     'learning_rate': 0.05,
     'min_child_weight': 2, 'n_estimators': 580,
-    'subsample': 0.6, 'max_depth': 5, 'gamma': 0.4}        
-    # params = {'objective': "count:poisson", #for poisson output
-    # 'eval_metric': "logloss", #loglikelihood loss
-    # 'seed': 2925, #for reproducibility
-    # 'silent': 1,
-    # 'learning_rate': 0.05,
-    # 'min_child_weight': 2, 'n_estimators': 1,
-    # 'subsample': 0.6, 'max_depth': 10000, 'gamma': 0.0000001,
-    # 'reg_alpha': 0.1,
-    # 'reg_lambda':0.1}
-
+    'subsample': 0.6, 'max_depth': 400, 'gamma': 0.4}
+    
     dtrain = xgb.DMatrix(Xr, label=Yr)
     dtest = xgb.DMatrix(Xt)
 
-    num_round = 100
+    num_round = 400
     bst = xgb.train(params, dtrain, num_round)
 
     Yt = bst.predict(dtest)

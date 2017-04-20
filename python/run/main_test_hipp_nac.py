@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 
 '''
-    File name: main_fig1.py
+    File name: main_test_hipp_nac.py
     Author: Guillaume Viejo
-    Date created: 27/03/2017    
+    Date created: 03/04/2017    
     Python Version: 2.7
 
-Fig 1 of the article
+To load hippocampal nac data and train the xgboost
 
 '''
 
@@ -24,43 +24,54 @@ import cPickle as pickle
 #####################################################################
 # DATA LOADING
 #####################################################################
-adrien_data = scipy.io.loadmat(os.path.expanduser('~/Dropbox (Peyrache Lab)/Peyrache Lab Team Folder/Data/HDCellData/data_test_boosted_tree.mat'))
-# m1_imported = scipy.io.loadmat('/home/guillaume/spykesML/data/m1_stevenson_2011.mat')
-
-final_data = {}
+luke_data = scipy.io.loadmat(os.path.expanduser('~/Dropbox (Peyrache Lab)/Peyrache Lab Team Folder/Data/HPC-NAc/BF1-1_CPP_2014-10-15/data_hipp_nac.mat'))
 
 
 #####################################################################
 # DATA ENGINEERING
 #####################################################################
-data            =   pd.DataFrame()
-data['time']    =   np.arange(len(adrien_data['Ang']))      # TODO : import real time from matlab script
-data['ang']     =   adrien_data['Ang'].flatten()            # angular direction of the animal head
-data['x']       =   adrien_data['X'].flatten()              # x position of the animal 
-data['y']       =   adrien_data['Y'].flatten()              # y position of the animal
-data['vel']     =   adrien_data['speed'].flatten()          # velocity of the animal 
-# Engineering features
-data['cos']     =   np.cos(adrien_data['Ang'].flatten())    # cosinus of angular direction
-data['sin']     =   np.sin(adrien_data['Ang'].flatten())    # sinus of angular direction
+data = 	pd.DataFrame()
 # Firing data
-for i in xrange(adrien_data['Pos'].shape[1]): data['Pos'+'.'+str(i)] = adrien_data['Pos'][:,i]
-for i in xrange(adrien_data['ADn'].shape[1]): data['ADn'+'.'+str(i)] = adrien_data['ADn'][:,i]
+for i in xrange(luke_data['hpc'].shape[1]): data['hpc'+'.'+str(i)] = luke_data['hpc'][:,i]
+for i in xrange(luke_data['nac'].shape[1]): data['nac'+'.'+str(i)] = luke_data['nac'][:,i]
 
 
-methods = ['mb_10', 'mb_60', 'mb_360', 'xgb_run', 'nn', 'lin_comb']
-
-colors=['#F5A21E', '#02A68E', '#EF3E34', '#134B64', '#FF07CD','b']
 
 #######################################################################
 # FONCTIONS DEFINITIONS
 #######################################################################
+def extract_tree_threshold(trees):
+	n = len(trees.get_dump())
+	thr = {}
+	for t in xrange(n):
+		gv = xgb.to_graphviz(trees, num_trees=t)
+		body = gv.body		
+		for i in xrange(len(body)):
+			for l in body[i].split('"'):
+				if 'f' in l and '<' in l:
+					tmp = l.split("<")
+					if thr.has_key(tmp[0]):
+						thr[tmp[0]].append(float(tmp[1]))
+					else:
+						thr[tmp[0]] = [float(tmp[1])]					
+	for k in thr.iterkeys():
+		thr[k] = np.sort(np.array(thr[k]))
+	return thr
+
+def tuning_curve(x, f, nb_bins):	
+	bins = np.linspace(x.min(), x.max()+1e-8, nb_bins+1)
+	index = np.digitize(x, bins).flatten()    
+	tcurve = np.array([np.mean(f[index == i]) for i in xrange(1, nb_bins+1)])  	
+	x = bins[0:-1] + (bins[1]-bins[0])/2.
+	return (x, tcurve)
+
 def test_features(features, targets, learners = ['glm_pyglmnet', 'nn', 'xgb_run', 'ens']):
     '''
         Main function of the script
         Return : dictionnary with for each models the score PR2 and Yt_hat
     '''
     X = data[features].values
-    Y = data[targets].values    
+    Y = np.vstack(data[targets].values)
     Models = {method:{'PR2':[],'Yt_hat':[]} for method in learners}
     learners_ = list(learners)
     print learners_
@@ -98,37 +109,82 @@ def test_features(features, targets, learners = ['glm_pyglmnet', 'nn', 'xgb_run'
         
     return Models
 
-########################################################################
-# COMBINATIONS DEFINITIONS
-########################################################################
-combination = {
-    'Pos':  {
-            'features'  :   ['ang'],
-            'targets'   :   [i for i in list(data) if i.split(".")[0] == 'Pos'], 
-            },          
-    'ADn':  {
-            'features'  :   ['ang'],
-            'targets'   :   [i for i in list(data) if i.split(".")[0] == 'ADn'],
-            }
-}
 
-# ########################################################################
-# # MAIN LOOP
-# ########################################################################
-# for k in np.sort(combination.keys()):
-#     features = combination[k]['features']
-#     targets = combination[k]['targets'] 
 
-#     results = test_features(features, targets, methods)
-    
-#     final_data[k] = results
+#####################################################################
+# COMBINATIONS DEFINITION
+#####################################################################
+combination = {}
+targets = [i for i in list(data) if i.split(".")[0] == 'nac']
+features = [i for i in list(data) if i.split(".")[0] == 'hpc']
 
-########################################################################
+for k in targets:
+	combination[k] = {	'cros' : 	{ 	'features'	: features,
+										'targets'	: k
+									}
+					}
+
+#####################################################################
+# LEARNING XGB
+#####################################################################
+
+
+params = {'objective': "count:poisson", #for poisson output
+    'eval_metric': "logloss", #loglikelihood loss
+    'seed': 2925, #for reproducibility
+    'silent': 1,
+    'learning_rate': 0.05,
+    'min_child_weight': 2, 'n_estimators': 580,
+    'subsample': 0.6, 'max_depth': 400, 'gamma': 0.4}
+
+num_round = 400
+
+bsts = {} # to keep the boosted tree
+for k in combination.iterkeys():
+	features = combination[k]['cros']['features']
+	targets = combination[k]['cros']['targets']	
+	X = data[features].values
+	Yall = data[targets].values		
+	dtrain = xgb.DMatrix(X, label=Yall)
+	bst = xgb.train(params, dtrain, num_round)
+	bsts[k] = bst
+
+	print len(bsts.keys())/float(len(combination.keys())) * 100.0 , '%'		
+
+#####################################################################
+# EXTRACT TREE STRUCTURE
+#####################################################################
+thresholds = {}
+for i in bsts.iterkeys():
+	thresholds[i] = extract_tree_threshold(bsts[i])		
+
+# need to sort the features by the number of splits
+sorted_features = dict.fromkeys(thresholds)
+for k in sorted_features.iterkeys():
+	count = np.array([len(thresholds[k][f]) for f in thresholds[k].iterkeys()])
+	name = np.array([combination[k]['cros']['features'][int(i[1:])] for i in thresholds[k].iterkeys()])
+	sorted_features[k] = [name[np.argsort(count)], np.sort(count)]
+
+# matrix relation of splits between neurons
+relation = {}
+for k in ['Pos', 'ADn']:
+	keys = [i for i in thresholds.iterkeys() if i.split(".")[0] == k]
+	tmp = np.zeros((len(keys), len(keys)))
+	for l in keys:
+		for m,n in zip(sorted_features[l][0], sorted_features[l][1]):
+			i = int(l.split(".")[1])
+			j = int(m.split(".")[1])
+			tmp[i, j] = n
+	relation[k] = tmp
+	#let's normalize the matrix
+	relation[k] = relation[k]/np.max(relation[k])
+
+sys.exit()
+
+
+#####################################################################
 # PLOTTING
-########################################################################
-with open("../data/fig1.pickle", 'rb') as f:
-    final_data = pickle.load(f)
-
+#####################################################################
 def figsize(scale):
     fig_width_pt = 483.69687                         # Get this from LaTeX using \the\textwidth
     inches_per_pt = 1.0/72.27                       # Convert pt to inch
@@ -177,58 +233,45 @@ import matplotlib.gridspec as gridspec
 from matplotlib.pyplot import *
 
 
-labels = {'mb_10':'MB \n 10 bins', 
-            'mb_60':'MB \n 60 bins', 
-            'mb_360':'MB \n 360 bins', 
-            'lin_comb':'Lin', 
-            'nn':'NN', 
-            'xgb_run':'XGB'}
 
-colors = ['#F5A21E']*3 + ['#134B64', '#02A68E', '#FF07CD']
 
 figure(figsize = figsize(0.5))
 
 simpleaxis(gca())
+y = []
+err = []
+x = [0.0]
+color = []
 
-# plot([-1, len(methods)], [0,0],'--k', alpha=0.4)
-
-
-labels_plot = [labels[m] for m in methods[0:-1]]
-
-
-mean_pR2 = list()
-sem_pR2 = list()
-for model in methods[0:-1]:            
-    PR2_art = final_data['ADn'][model]['PR2']
-    mean_pR2.append(np.mean(PR2_art))
-    sem_pR2.append(np.std(PR2_art)/np.sqrt(np.size(PR2_art)))        
-
-bar(np.arange(np.size(mean_pR2)), mean_pR2, 0.4, align='center',
-        ecolor='k', alpha=.9, color='#134B64', ec='w', yerr=np.array(sem_pR2), label = 'Antero-dorsal nucleus')
-plot(np.arange(np.size(mean_pR2)), mean_pR2, 'k.', markersize=5)
-
-mean_pR2 = list()
-sem_pR2 = list()
-for model in methods[0:-1]:        
-    PR2_art = final_data['Pos'][model]['PR2']
-    mean_pR2.append(np.mean(PR2_art))
-    sem_pR2.append(np.std(PR2_art)/np.sqrt(np.size(PR2_art)))        
-
-bar(np.arange(np.size(mean_pR2))+0.41, mean_pR2, 0.4, align='center',
-        ecolor='k', alpha=.9, color='#F5A21E', ec='w', yerr=np.array(sem_pR2), label = 'Post-subiculum')
-plot(np.arange(np.size(mean_pR2))+0.41, mean_pR2, 'k.', markersize=5)
+for g in ['cros']:
+	for m in ['xgb_run', 'nn']:		
+		PR2_art = []    		
+		for n in final_data.iterkeys():
+			PR2_art.append(final_data[n][g][m]['PR2'])
+		y.append(np.mean(PR2_art))
+		err.append(np.std(PR2_art)/np.sqrt(np.size(PR2_art)))
+		x.append(x[-1]+0.42)
+		x[-1] += 0.2
+	x[-1] += 0.5
+		
+x = np.array(x)
+y = np.array(y)
+err = np.array(err)		
 
 
-# legend(bbox_to_anchor=(0.5, 1.2), loc='upper center', ncol=2, frameon = False)
-# xlim(-0.5, 4.5)
-# ylim(0.0, 0.8)
-xticks(np.arange(np.size(mean_pR2))+0.205, labels_plot)
+bar(x[0:-1], y, 0.4, align='center',
+            ecolor='k', color = 'grey', alpha=.9, ec='w', yerr=err, label = 'Nucleus Accumbeuns ')
+
+plot(x[0:-1], y, 'k.', markersize=3)         
+
+xlim(np.min(x)-0.5, np.max(x[0:-1])+0.5)
 ylabel('Pseudo-R2')
+xticks(x[0:-1], ['XGB', 'NN']*2)
+
+legend(bbox_to_anchor=(0.5, 1.2), loc='upper center', ncol=2, frameon = False)
+
+figtext(0.4, -0.1, "Hpc $\Rightarrow$ Acc \n \scriptsize{(Features $\Rightarrow$ Target)}")
 
 
-savefig("../../figures/fig1.pdf", dpi=900, bbox_inches = 'tight', facecolor = 'white')
-os.system("evince ../../figures/fig1.pdf &")
-    
-
-
-
+savefig("../../figures/fig4_bis.pdf", dpi=900, bbox_inches = 'tight', facecolor = 'white')
+os.system("evince ../../figures/fig4_bis.pdf &")
