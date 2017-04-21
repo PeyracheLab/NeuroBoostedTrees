@@ -129,7 +129,7 @@ final_data = {}
 for a in animals:
 	final_data[a] = {}
 	for s in ['pre', 'post']:
-		final_data[a]['pre'] = {}
+		final_data[a][s] = {}
 		#####################################################################
 		# DATA ENGINEERING
 		#####################################################################
@@ -153,14 +153,14 @@ for a in animals:
 		# LEARNING
 		#####################################################################        
 		for k in combination.iterkeys():	
-			final_data[a]['pre'][k] = {}
+			final_data[a][s][k] = {}
 			for w in combination[k].iterkeys():		
 				features = combination[k][w]['features']
 				targets =  combination[k][w]['targets'] 		
 				results = test_features(features, targets, methods)		
-				final_data[a]['pre'][k][w] = results
+				final_data[a][s][k][w] = results
 
-			print len(final_data.keys())/float(len(animals)) * 100.0 , '% ', len(final_data[a]['pre'].keys())/float(len(targets)) * 100.0 , '% '
+			print len(final_data.keys())/float(len(animals)) * 100.0 , '% ', len(final_data[a][s].keys())/float(len(targets)) * 100.0 , '% '
 
 
 
