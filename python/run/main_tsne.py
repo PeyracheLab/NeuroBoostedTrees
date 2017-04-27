@@ -1,14 +1,12 @@
 #!/usr/bin/env python
 
 '''
-	File name: main_test_r2_nac.py
+	File name: main_tsne.py
 	Author: Guillaume Viejo
-	Date created: 03/04/2017    
+	Date created: 25/04/2017    
 	Python Version: 2.7
 
-To compute r2 prediction with hipp-nac data and make file for plot for fig 4
-
-r2 prediction is made for each animal so need to load only the corresponding files
+test of t-sne 
 
 
 
@@ -44,16 +42,16 @@ for a in animals:
 	for b in subfold:
 		files = os.listdir(maindir+b)
 		for i in files:
-			if 'data_hipp_nac_' in i and 'hpc_20' in i:
+			if 'data_hipp_nac_' in i:
 				if 'pre' in i:
 					pre.append(maindir+b+'/'+i)
 				elif 'post' in i:
 					post.append(maindir+b+'/'+i)    
-	if len(pre) and len(post):
-		toload[a] = {
-			'pre':pre,
-			'post':post
-		}
+
+	toload[a] = {
+		'pre':pre[0],
+		'post':post[0]
+	}
 
 #######################################################################
 # FONCTIONS DEFINITIONS
@@ -122,57 +120,129 @@ def test_features(features, targets, learners = ['glm_pyglmnet', 'nn', 'xgb_run'
 
 
 ########################################################################
-# MAIN LOOP FOR R2
+# MAIN LOOP
 ########################################################################
 methods = ['xgb_run']
-final_data = {}
-for a in toload.iterkeys():
-	final_data[a] = {}
+bsts = {}
+combination = {}
+params = {'objective': "count:poisson", #for poisson output
+    'eval_metric': "logloss", #loglikelihood loss
+    'seed': 2925, #for reproducibility
+    'silent': 1,
+    'learning_rate': 0.05,
+    'min_child_weight': 2, 'n_estimators': 10,
+    'subsample': 0.6, 'max_depth': 400, 'gamma': 0.4}        
+num_round = 400
+
+# for a in animals:
+for a in ['BF3-3']:
+	bsts[a] = {}
+	combination[a] = {}
 	for s in ['pre', 'post']:
-		final_data[a][s] = {}
-		for r in toload[a][s]:
-			tmp = r.split("/")[-2].split("_")[1]
-			final_data[a][s][tmp] = {}
-			#####################################################################
-			# DATA ENGINEERING
-			#####################################################################
-			luke_data = scipy.io.loadmat(r)
-			data = 	pd.DataFrame()
-			# Firing data
-			for i in xrange(luke_data['hpc'].shape[1]): data['hpc'+'.'+str(i)] = luke_data['hpc'][:,i]
-			for i in xrange(luke_data['nac'].shape[1]): data['nac'+'.'+str(i)] = luke_data['nac'][:,i]
-			#####################################################################
-			# COMBINATIONS DEFINITION
-			#####################################################################
-			combination = {}
-			targets = [i for i in list(data) if i.split(".")[0] == 'nac']
-			features = [i for i in list(data) if i.split(".")[0] == 'hpc']
-			for k in targets:
-				combination[k] = {	'cros' : 	{ 	'features'	: features,
-													'targets'	: k
-												}
-								}
-			
-			#####################################################################
-			# LEARNING
-			#####################################################################        
-			for k in combination.iterkeys():	
-				final_data[a][s][tmp][k] = {}
-				for w in combination[k].iterkeys():		
-					features = combination[k][w]['features']
-					targets =  combination[k][w]['targets'] 		
-					results = test_features(features, targets, methods)		
-					final_data[a][s][tmp][k][w] = results
-	
-					print len(final_data.keys())/float(len(animals)) * 100.0 , '% '
-	
-	
+		bsts[a][s] = {}
+		combination[a][s] = {}
+		#####################################################################
+		# DATA ENGINEERING
+		#####################################################################
+		luke_data = scipy.io.loadmat(toload[a][s])
+		data = 	pd.DataFrame()
+		# Firing data
+		for i in xrange(luke_data['hpc'].shape[1]): data['hpc'+'.'+str(i)] = luke_data['hpc'][:,i]
+		for i in xrange(luke_data['nac'].shape[1]): data['nac'+'.'+str(i)] = luke_data['nac'][:,i]
+		#####################################################################
+		# COMBINATIONS DEFINITION
+		#####################################################################		
+		targets = [i for i in list(data) if i.split(".")[0] == 'nac']
+		features = [i for i in list(data) if i.split(".")[0] == 'hpc']
+		for k in targets:
+			combination[a][s][k] = 	{ 	'features'	: features,
+									'targets'	: k
+								}									
+		
+		#####################################################################
+		# LEARNING BOOSTER
+		#####################################################################        
+		for k in combination[a][s].iterkeys():				
+			features = combination[a][s][k]['features']
+			target =  combination[a][s][k]['targets'] 					
+			X = data[features].values
+			Yall = data[target].values		
+			dtrain = xgb.DMatrix(X, label=Yall)
+			bst = xgb.train(params, dtrain, num_round)
+			bsts[a][s][k] = bst
 
-with open("../data_test_hipp_nac_pre_post_400_depths_400_rounds.pickle", 'wb') as f:
-	pickle.dump(final_data, f)
+#####################################################################
+# EXTRACT TREE STRUCTURE
+#####################################################################
+thresholds = {}
+for a in bsts.iterkeys():
+	thresholds[a] = {}
+	for s in ['pre', 'post']:
+		thresholds[a][s] = {}
+		for k in bsts[a][s].iterkeys():	
+			thresholds[a][s][k] = extract_tree_threshold(bsts[a][s][k])		
 
-# with open("../data/data_test_hipp_nac_pre_post_400_depths_400_rounds.pickle", 'rb') as f:
-# 	final_data = pickle.load(f)
+# need to sort the features by the number of splits
+sorted_features = {}
+for a in bsts.iterkeys():
+	sorted_features[a] = {}
+	for s in ['pre', 'post']:
+		sorted_features[a][s] = {}
+		for k in bsts[a][s].iterkeys():
+			count = np.array([len(thresholds[a][s][k][f]) for f in thresholds[a][s][k].iterkeys()])
+			name = np.array([combination[a][s][k]['features'][int(f[1:])] for f in thresholds[a][s][k].iterkeys()])            			
+			sorted_features[a][s][k] = np.array([name[np.argsort(count)], np.sort(count)])
+
+#####################################################################
+# T-SNE
+#####################################################################
+# need to build a matrix N * N (neurons * number of splits)
+# need to assign to each neuron an index
+# first hpc then nac
+group = {}
+labels = {}
+for a in sorted_features.iterkeys():
+	group[a] = {}
+	labels[a] = {}
+	for s in ['pre', 'post']:
+		allneurons = combination[a][s].keys()
+		allneurons += combination[a][s][combination[a][s].keys()[0]]['features']
+		index = {}		
+		for n in allneurons:
+			if 'hpc' in n:
+				index[n] = int(n.split(".")[1])
+		tmp = np.max(index.values())+1
+		for n in allneurons:
+		 	if 'nac' in n:
+		 		index[n] = int(n.split(".")[1])+tmp
+
+		N = len(index.keys())
+		distance = np.zeros((N,N))
+		for n in allneurons:
+			if 'nac' in n:		
+				for j,i in zip(sorted_features[a][s][n][0],sorted_features[a][s][n][1]):
+					distance[index[n],index[j]] = float(i)
+
+		distance = 1.0 - distance/distance.max()
+		group[a][s] = tsne(distance, no_dims = 2, initial_dims = distance.shape[1], perplexity = 100.0)
+		labels[a][s] = np.ones(N)
+		labels[a][s][tmp:] = 2.0
+
+
+
+figure()
+subplot(121)
+plot(group[a]['pre'][labels[a]['pre']==1,0], group[a]['pre'][labels[a]['pre']==1,1], 'o')
+plot(group[a]['pre'][labels[a]['pre']==2,0], group[a]['pre'][labels[a]['pre']==2,1], '*')
+subplot(122)
+plot(group[a]['post'][labels[a]['post']==1,0], group[a]['post'][labels[a]['post']==1,1], 'o')
+plot(group[a]['post'][labels[a]['post']==2,0], group[a]['post'][labels[a]['post']==2,1], '*')
+
+show()
+
+		
+sys.exit()
+
 
 
 #####################################################################
@@ -226,8 +296,7 @@ import matplotlib.gridspec as gridspec
 from matplotlib.pyplot import *
 
 
-colors = {'pre':"#C5C5C5",
-			'post':"#A50104"}
+
 
 figure(figsize = figsize(0.5))
 
@@ -237,45 +306,34 @@ err = []
 x = [0.0]
 color = []
 
-for a in animals:
-	for g in ['pre', 'post']:
-		for m in ['xgb_run']:		
-			PR2_art = []
-			for n in final_data[a][g].iterkeys():
-				PR2_art.append(final_data[a][g][n]['cros'][m]['PR2'])
-			y.append(np.mean(PR2_art))
-			err.append(np.std(PR2_art)/np.sqrt(np.size(PR2_art)))
-			x.append(x[-1]+0.22)
+for g in ['cros']:
+	for m in ['xgb_run', 'nn']:		
+		PR2_art = []    		
+		for n in final_data.iterkeys():
+			PR2_art.append(final_data[n][g][m]['PR2'])
+		y.append(np.mean(PR2_art))
+		err.append(np.std(PR2_art)/np.sqrt(np.size(PR2_art)))
+		x.append(x[-1]+0.42)
 		x[-1] += 0.2
 	x[-1] += 0.5
 		
-x = np.array(x)[0:-1]
+x = np.array(x)
 y = np.array(y)
 err = np.array(err)		
-# need to sort by y post
-posty = y[np.arange(1,len(y),2)]
-animals_sorted = animals[np.argsort(posty)]
-y = y.reshape(len(animals),2)
-y = y[np.argsort(posty)].flatten()
-err = err.reshape(len(animals),2)
-err = err[np.argsort(posty)].flatten()
 
-indpre = np.arange(0,len(x),2)
-indpos = np.arange(1,len(x),2)
-bar(x[indpre], y[indpre], 0.4, align='center', ecolor='k', color = colors['pre'], alpha=.9, ec='w', yerr=err[indpre], label = 'Pre-training')
-bar(x[indpos], y[indpos], 0.4, align='center', ecolor='k', color = colors['post'], alpha=.9, ec='w', yerr=err[indpos], label = 'Post-training')
-plot(x, y, 'k.', markersize=3)         
 
-xlim(np.min(x)-0.5, np.max(x)+0.5)
-ylabel('Pseudo-R2 (XGB)')
+bar(x[0:-1], y, 0.4, align='center',
+			ecolor='k', color = 'grey', alpha=.9, ec='w', yerr=err, label = 'Nucleus Accumbeuns ')
 
-xticks(x[indpre]+0.22, animals, fontsize = 4)
+plot(x[0:-1], y, 'k.', markersize=3)         
 
-xlabel("Animal")
+xlim(np.min(x)-0.5, np.max(x[0:-1])+0.5)
+ylabel('Pseudo-R2')
+xticks(x[0:-1], ['XGB', 'NN']*2)
 
-legend(loc='best', ncol=1, frameon = False)
+legend(bbox_to_anchor=(0.5, 1.2), loc='upper center', ncol=2, frameon = False)
 
-title("Hpc $\Rightarrow$ Acc")
+figtext(0.4, -0.1, "Hpc $\Rightarrow$ Acc \n \scriptsize{(Features $\Rightarrow$ Target)}")
 
 
 savefig("../../figures/fig4_bis.pdf", dpi=900, bbox_inches = 'tight', facecolor = 'white')

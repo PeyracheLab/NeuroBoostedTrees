@@ -140,7 +140,7 @@ def figsize(scale):
     inches_per_pt = 1.0/72.27                       # Convert pt to inch
     golden_mean = (np.sqrt(5.0)-1.0)/2.0            # Aesthetic ratio (you could change this)
     fig_width = fig_width_pt*inches_per_pt*scale    # width in inches
-    fig_height = fig_width*golden_mean*2.5            # height in inches
+    fig_height = fig_width*golden_mean            # height in inches
     fig_size = [fig_width,fig_height]
     return fig_size
 
@@ -187,10 +187,10 @@ trans = {'f0':'Angle','f1':'x pos','f2':'y pos'}
 colors_ = ['#134B64', '#F5A21E']
 title_ = ['Antero-dorsal nucleus', 'Post-subiculum']
 
-figure(figsize = figsize(0.5))
+figure(figsize = figsize(1))
 subplots_adjust(hspace = 0.2, right = 0.999)
 # outer = gridspec.GridSpec(2,2, height_ratios = [1, 0.6])
-outer = gridspec.GridSpec(2,1)
+outer = gridspec.GridSpec(1,2)
 
 # Examples subplot 1 et 2
 for i in xrange(2):

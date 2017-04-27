@@ -153,35 +153,38 @@ for n in ['Pos', 'ADn']:
 # with open("../data/fig4.pickle", 'wb') as f:
 #   pickle.dump(final_data, f)
 
-# with open("../data/fig4.pickle", 'rb') as f:
-# 	final_data = pickle.load(f)
+with open("../data/fig4.pickle", 'rb') as f:
+	final_data = pickle.load(f)
 
 #####################################################################
 # LEARNING XGB
 #####################################################################
 
-bsts = {}
-params = {'objective': "count:poisson", #for poisson output
-	'eval_metric': "logloss", #loglikelihood loss
-	'seed': 2925, #for reproducibility
-	'silent': 1,
-	'learning_rate': 0.05,
-	'min_child_weight': 2, 'n_estimators': 580,
-	'subsample': 0.6, 'max_depth': 400, 'gamma': 0.4}    
-num_round = 400
+# bsts = {}
+# params = {'objective': "count:poisson", #for poisson output
+# 	'eval_metric': "logloss", #loglikelihood loss
+# 	'seed': 2925, #for reproducibility
+# 	'silent': 1,
+# 	'learning_rate': 0.05,
+# 	'min_child_weight': 2, 'n_estimators': 580,
+# 	'subsample': 0.6, 'max_depth': 400, 'gamma': 0.4}    
+# num_round = 400
 
-for g in combination.iterkeys():
-	bsts[g] = {}
-	for w in combination[g].iterkeys():
-		bsts[g][w] = {}
-		for k in combination[g][w].iterkeys():
-			features = combination[g][w][k]['features']
-			targets =  combination[g][w][k]['targets']	
-			X = data[features].values
-			Yall = data[targets].values		
-			dtrain = xgb.DMatrix(X, label=Yall)
-			bst = xgb.train(params, dtrain, num_round)
-			bsts[g][w][k] = bst
+# for g in combination.iterkeys():
+# 	bsts[g] = {}
+# 	for w in combination[g].iterkeys():
+# 		bsts[g][w] = {}
+# 		for k in combination[g][w].iterkeys():
+# 			features = combination[g][w][k]['features']
+# 			targets =  combination[g][w][k]['targets']	
+# 			X = data[features].values
+# 			Yall = data[targets].values		
+# 			dtrain = xgb.DMatrix(X, label=Yall)
+# 			bst = xgb.train(params, dtrain, num_round)
+# 			bsts[g][w][k] = bst
+
+with open("../data/fig4_bsts.pickle", 'rb') as f:
+	bsts = pickle.load(f)
 
 # #####################################################################
 # # TUNING CURVE
@@ -232,7 +235,27 @@ for g in combination.iterkeys():
 		plotsplitvar[g][w]['nsplit'] = np.array(plotsplitvar[g][w]['nsplit']).flatten()
 		
 
-
+#####################################################################
+# DISTANCE TO CENTER OF FIELD
+#####################################################################
+distance = {}
+plotdistance = {}
+for g in combination.iterkeys():
+	distance[g] = {}
+	plotdistance[g] = {}
+	for w in combination[g].iterkeys():
+		distance[g][w] = {}
+		plotdistance[g][w] = {'nsplit':[], 'distance':[]}
+		for k in combination[g][w].iterkeys():
+			com_neuron = tuningc[k][0][np.argmax(tuningc[k][1])]				
+			com = np.array([tuningc[n][0][np.argmax(tuningc[n][1])] for n in sorted_features[g][w][k][0]])			
+			dist = np.abs(com - com_neuron)
+			tmp = 2*np.pi - dist[dist>np.pi]
+			dist[dist>np.pi] = tmp
+			plotdistance[g][w]['distance'].append(dist)
+			plotdistance[g][w]['nsplit'].append(sorted_features[g][w][k][1].astype('int'))
+		plotdistance[g][w]['distance'] = np.array(plotdistance[g][w]['distance']).flatten()
+		plotdistance[g][w]['nsplit'] = np.array(plotdistance[g][w]['nsplit']).flatten()
 
 
 #####################################################################
@@ -305,11 +328,11 @@ colors_ = {'ADn':'#134B64', 'Pos':'#F5A21E'}
 labels_plot = [labels[m] for m in methods[0:-1]]
 
 figure(figsize = figsize(1))
-subplots_adjust(hspace = 0.4, wspace = 0.4)
-outer = gridspec.GridSpec(1,3)
+# subplots_adjust(hspace = 0.2, wspace = 0.4)
+outer = gridspec.GridSpec(1,2, width_ratios=[1,2])
 # SUBPLOT 1 ################################################################
-gs = gridspec.GridSpecFromSubplotSpec(1,1,subplot_spec = outer[0])
-subplot(gs[0])
+# gs = gridspec.GridSpecFromSubplotSpec(1,1,subplot_spec = outer[0])
+subplot(outer[0])
 simpleaxis(gca())
 y = []
 err = []
@@ -359,38 +382,55 @@ legend(bbox_to_anchor=(0.5, 1.2), loc='upper center', ncol=1, frameon = False)
 # figtext(0.6, -0.14, "ADn $\Rightarrow$ Post-S \n Post-S $\Rightarrow$ ADn")
 
 # SUBPLOT 2 ################################################################
-gs = gridspec.GridSpecFromSubplotSpec(2,2,subplot_spec = outer[1], hspace = 0.9, wspace = 0.9)
+gs = gridspec.GridSpecFromSubplotSpec(2,4,subplot_spec = outer[1], hspace = 0.8, wspace = 0.5)
 matplotlib.rcParams.update({"axes.labelsize": 	4,
 							"font.size": 		4,
 							"legend.fontsize": 	4,
 							"xtick.labelsize": 	4,
 							"ytick.labelsize": 	4,   
 							})               # Make the legend/label fonts a little smaller
-							
+title_ = ["ADn $\Rightarrow$ ADn", "Post-S $\Rightarrow$ ADn", "Post-S $\Rightarrow$ Post-S", "ADn $\Rightarrow$ Post-S"]							
 count = 0
 for g in plotsplitvar.keys():
 	for w in ['peer', 'cros']:
 		subplot(gs[count])
 		simpleaxis(gca())
-		plot(plotsplitvar[g][w]['unique'], plotsplitvar[g][w]['nsplit'], 'o', color = colors_[g], markersize = 1)
+		plot(plotdistance[g][w]['distance'], plotdistance[g][w]['nsplit'], 'o', color = colors_[g], markersize = 1)
 		locator_params(nbins=2)	
-		count += 1
+		
+		
+		ticklabel_format(style='sci', axis='x', scilimits=(0,0), fontsize = 4)
+		ticklabel_format(style='sci', axis='y', scilimits=(0,0), fontsize = 4)
+		xticks([0, np.pi], ['0', '$\pi$'], fontsize = 4)
+		yticks(fontsize = 4)
+		
+		xlabel("Angular distance", fontsize = 4)		
+		if count == 0:
+			ylabel("Number of splits", fontsize = 4)
+
+		title(title_[count], fontsize = 4, loc = 'left', y = 1.3)
+		xlim(0, np.pi)
+		subplot(gs[count+4])
+		simpleaxis(gca())
+		
+		plot(plotsplitvar[g][w]['unique'], plotsplitvar[g][w]['nsplit'], 'o', color = colors_[g], markersize = 1)
+		# for k in splitvar[g][w].keys():
+		# 	plot(splitvar[g][w][k][1], splitvar[g][w][k][0], '-', color = colors_[g], markersize = 1, alpha = 0.4)
+		locator_params(nbins=2)	
+		
 		
 		ticklabel_format(style='sci', axis='x', scilimits=(0,0), fontsize = 4)
 		ticklabel_format(style='sci', axis='y', scilimits=(0,0), fontsize = 4)
 		xticks(fontsize = 4)
 		yticks(fontsize = 4)
-		xlabel("Number of values", fontsize = 4)
-		ylabel("Number of splits", fontsize = 4)
+		
+		xlabel("Number of values", fontsize = 4, labelpad = 9)
+		
 
-
-
-# SUBPLOT 3 ################################################################
-gs = gridspec.GridSpecFromSubplotSpec(2,2,subplot_spec = outer[2])
-subplot(gs[0])
-subplot(gs[1])
-subplot(gs[2])
-subplot(gs[3])
+		if count == 0:
+			ylabel("Number of splits", fontsize = 4)
+		
+		count += 1
 
 savefig("../../figures/fig4.pdf", dpi=900, bbox_inches = 'tight', facecolor = 'white')
 os.system("evince ../../figures/fig4.pdf &")

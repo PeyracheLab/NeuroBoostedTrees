@@ -3,6 +3,8 @@ path_to_data = '/home/guillaume/Dropbox (Peyrache Lab)/Peyrache Lab Team Folder/
 all_subfolders = dir(path_to_data);
 all_subfolders(1:2) = [];
 
+x = [];
+
 for i = 1:size(all_subfolders)
     dset = all_subfolders(i).name
     
@@ -41,7 +43,10 @@ for i = 1:size(all_subfolders)
         Qhpc = Qhpc(:,index_hpc);
         Qnac = Qnac(:,index_nac);
     
-        if ~isempty(Qhpc) && ~isempty(Qnac)
+        [m,n] = size(Qhpc);
+        x = [x n];
+        
+        if ~isempty(Qhpc) && ~isempty(Qnac) && n >= 20
     
             fQnac = gaussFilt(Qnac, 10, 0);
             fQhpc = gaussFilt(Qhpc, 10, 0);
@@ -50,7 +55,7 @@ for i = 1:size(all_subfolders)
 
             dset = split(dset, '_');
 
-            filename = string('data_hipp_nac_'+dset(1)+'_'+GeneralInfo.sessionType+'.mat');
+            filename = string('data_hipp_nac_'+dset(1)+'_'+GeneralInfo.sessionType+'_hpc_20.mat');
 
             save(filename.char, '-struct', 'data_to_save');
         end

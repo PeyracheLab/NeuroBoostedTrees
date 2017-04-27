@@ -115,8 +115,8 @@ params = {'objective': "count:poisson", #for poisson output
     'silent': 1,
     'learning_rate': 0.05,
     'min_child_weight': 2, 'n_estimators': 10,
-    'subsample': 0.6, 'max_depth': 100, 'gamma': 0.4}        
-num_round = 1
+    'subsample': 0.6, 'max_depth': 400, 'gamma': 0.4}        
+num_round = 400
 
 for k in combination.keys():
 	features = combination[k]['features']
