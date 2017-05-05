@@ -126,53 +126,53 @@ def test_features(features, targets, learners = ['glm_pyglmnet', 'nn', 'xgb_run'
 ########################################################################
 methods = ['xgb_run']
 final_data = {}
-for a in toload.iterkeys():
-	final_data[a] = {}
-	for s in ['pre', 'post']:
-		final_data[a][s] = {}
-		for r in toload[a][s]:
-			tmp = r.split("/")[-2].split("_")[1]
-			final_data[a][s][tmp] = {}
-			#####################################################################
-			# DATA ENGINEERING
-			#####################################################################
-			luke_data = scipy.io.loadmat(r)
-			data = 	pd.DataFrame()
-			# Firing data
-			for i in xrange(luke_data['hpc'].shape[1]): data['hpc'+'.'+str(i)] = luke_data['hpc'][:,i]
-			for i in xrange(luke_data['nac'].shape[1]): data['nac'+'.'+str(i)] = luke_data['nac'][:,i]
-			#####################################################################
-			# COMBINATIONS DEFINITION
-			#####################################################################
-			combination = {}
-			targets = [i for i in list(data) if i.split(".")[0] == 'nac']
-			features = [i for i in list(data) if i.split(".")[0] == 'hpc']
-			for k in targets:
-				combination[k] = {	'cros' : 	{ 	'features'	: features,
-													'targets'	: k
-												}
-								}
+# for a in toload.iterkeys():
+# 	final_data[a] = {}
+# 	for s in ['pre', 'post']:
+# 		final_data[a][s] = {}
+# 		for r in toload[a][s]:
+# 			tmp = r.split("/")[-2].split("_")[1]
+# 			final_data[a][s][tmp] = {}
+# 			#####################################################################
+# 			# DATA ENGINEERING
+# 			#####################################################################
+# 			luke_data = scipy.io.loadmat(r)
+# 			data = 	pd.DataFrame()
+# 			# Firing data
+# 			for i in xrange(luke_data['hpc'].shape[1]): data['hpc'+'.'+str(i)] = luke_data['hpc'][:,i]
+# 			for i in xrange(luke_data['nac'].shape[1]): data['nac'+'.'+str(i)] = luke_data['nac'][:,i]
+# 			#####################################################################
+# 			# COMBINATIONS DEFINITION
+# 			#####################################################################
+# 			combination = {}
+# 			targets = [i for i in list(data) if i.split(".")[0] == 'nac']
+# 			features = [i for i in list(data) if i.split(".")[0] == 'hpc']
+# 			for k in targets:
+# 				combination[k] = {	'cros' : 	{ 	'features'	: features,
+# 													'targets'	: k
+# 												}
+# 								}
 			
-			#####################################################################
-			# LEARNING
-			#####################################################################        
-			for k in combination.iterkeys():	
-				final_data[a][s][tmp][k] = {}
-				for w in combination[k].iterkeys():		
-					features = combination[k][w]['features']
-					targets =  combination[k][w]['targets'] 		
-					results = test_features(features, targets, methods)		
-					final_data[a][s][tmp][k][w] = results
+# 			#####################################################################
+# 			# LEARNING
+# 			#####################################################################        
+# 			for k in combination.iterkeys():	
+# 				final_data[a][s][tmp][k] = {}
+# 				for w in combination[k].iterkeys():		
+# 					features = combination[k][w]['features']
+# 					targets =  combination[k][w]['targets'] 		
+# 					results = test_features(features, targets, methods)		
+# 					final_data[a][s][tmp][k][w] = results
 	
-					print len(final_data.keys())/float(len(animals)) * 100.0 , '% '
+# 					print len(final_data.keys())/float(len(animals)) * 100.0 , '% '
 	
 	
 
-with open("../data_test_hipp_nac_pre_post_400_depths_400_rounds.pickle", 'wb') as f:
-	pickle.dump(final_data, f)
+# with open("../data_test_hipp_nac_pre_post_400_depths_400_rounds.pickle", 'wb') as f:
+# 	pickle.dump(final_data, f)
 
-# with open("../data/data_test_hipp_nac_pre_post_400_depths_400_rounds.pickle", 'rb') as f:
-# 	final_data = pickle.load(f)
+with open("../data/data_test_hipp_nac_pre_post_400_depths_400_rounds_hpc_20.pickle", 'rb') as f:
+	final_data = pickle.load(f)
 
 
 #####################################################################
@@ -237,28 +237,51 @@ err = []
 x = [0.0]
 color = []
 
-for a in animals:
-	for g in ['pre', 'post']:
+for a in final_data.iterkeys():
+	for g in ['pre', 'post']:		
 		for m in ['xgb_run']:		
 			PR2_art = []
-			for n in final_data[a][g].iterkeys():
-				PR2_art.append(final_data[a][g][n]['cros'][m]['PR2'])
+			for d in final_data[a][g].iterkeys():
+				for n in final_data[a][g][d].iterkeys():
+					PR2_art.append(final_data[a][g][d][n]['cros'][m]['PR2'])
 			y.append(np.mean(PR2_art))
 			err.append(np.std(PR2_art)/np.sqrt(np.size(PR2_art)))
 			x.append(x[-1]+0.22)
 		x[-1] += 0.2
 	x[-1] += 0.5
-		
+
+	
 x = np.array(x)[0:-1]
 y = np.array(y)
 err = np.array(err)		
 # need to sort by y post
 posty = y[np.arange(1,len(y),2)]
-animals_sorted = animals[np.argsort(posty)]
-y = y.reshape(len(animals),2)
+animals_sorted = np.array(final_data.keys())[np.argsort(posty)]
+y = y.reshape(len(final_data.keys()),2)
 y = y[np.argsort(posty)].flatten()
-err = err.reshape(len(animals),2)
+err = err.reshape(len(final_data.keys()),2)
 err = err[np.argsort(posty)].flatten()
+
+y = list(y)
+x = list(x)
+err = list(err)
+
+for g in ['pre', 'post']:		
+	PR2_art = []
+	for a in final_data.iterkeys():	
+		for m in ['xgb_run']:					
+			for d in final_data[a][g].iterkeys():
+				for n in final_data[a][g][d].iterkeys():
+					PR2_art.append(final_data[a][g][d][n]['cros'][m]['PR2'])
+	y.append(np.mean(PR2_art))
+	err.append(np.std(PR2_art)/np.sqrt(np.size(PR2_art)))
+	x.append(x[-1]+0.7+0.22)
+x[-1]-=0.5
+
+
+x = np.array(x)
+y = np.array(y)
+err = np.array(err)
 
 indpre = np.arange(0,len(x),2)
 indpos = np.arange(1,len(x),2)
@@ -269,11 +292,11 @@ plot(x, y, 'k.', markersize=3)
 xlim(np.min(x)-0.5, np.max(x)+0.5)
 ylabel('Pseudo-R2 (XGB)')
 
-xticks(x[indpre]+0.22, animals, fontsize = 4)
+xticks(x[indpre]+0.22, final_data.keys()+['All'], fontsize = 4)
 
 xlabel("Animal")
 
-legend(loc='best', ncol=1, frameon = False)
+legend(loc='upper right', ncol=1, frameon = False, bbox_to_anchor=(1.08, 1.14))
 
 title("Hpc $\Rightarrow$ Acc")
 
