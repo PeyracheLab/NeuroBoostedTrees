@@ -102,7 +102,7 @@ def grid_search(features, targets):
     Y = data[targets].values    
     
     max_depth_step = 2**np.arange(1,11)
-    max_trees_step = np.array([1,2,5,10,20,30,40,60,80,100,150])
+    max_trees_step = np.array([5,20,40,80,100,150,200,250,300,350,400,500])
     # max_depth_step = 2**np.arange(1,5)
     # max_trees_step = np.array([5,10,20,30])    
 
@@ -147,17 +147,30 @@ combination = {
 # ########################################################################
 # # MAIN LOOP
 # ########################################################################
-for k in np.sort(combination.keys()):
-    features = combination[k]['features']
-    targets = combination[k]['targets'] 
+# for k in np.sort(combination.keys()):
+#     features = combination[k]['features']
+#     targets = combination[k]['targets'] 
 
-    results = grid_search(features, targets)
-    
-    sys.exit()
+#     results = grid_search(features, targets)
+
+with open("../data/grid_search_ang_adn_pos.pickle", 'rb') as f:
+    grid = pickle.load(f)
 
 
-
+dt = (np.vstack(max_depth_step)+max_trees_step).astype('float')
+penalty = np.log(22863.0)*dt
 sys.exit()
+
+# extent=(max_trees_step.min(),max_trees_step.max(),max_depth_step.min(),max_depth_step.max())
+imshow(bic.mean(0), origin = 'lower', interpolation = 'nearest', aspect = 'auto')
+yticks(np.arange(len(max_depth_step)), max_depth_step)
+xticks(np.arange(len(max_trees_step)), max_trees_step)
+ylabel("depth")
+xlabel("n trees")
+show()
+
+
+
 ########################################################################
 # PLOTTING
 ########################################################################

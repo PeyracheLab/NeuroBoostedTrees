@@ -83,7 +83,7 @@ def grid_search(features, targets):
     Y = data[targets].values    
     
     max_depth_step = 2**np.arange(1,11)
-    max_trees_step = np.array([1,2,5,10,20,30,40,60,80,100,150])
+    max_trees_step = np.array([5,20,40,80,100,150,200,250,300,350,400,500])
 
     grid_results = np.zeros((Y.shape[1],len(max_depth_step),len(max_trees_step)))
     
