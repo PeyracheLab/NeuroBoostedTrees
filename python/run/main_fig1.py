@@ -129,12 +129,17 @@ combination = {
 with open("../data/fig1.pickle", 'rb') as f:
     final_data = pickle.load(f)
 
+thomas = pickle.load(open("../data/harmo_thomas.pickle", 'rb'))
+
+with open("../data/grid_search_ang_adn_pos.pickle", 'rb') as f:
+    bic = pickle.load(f)
+
 def figsize(scale):
     fig_width_pt = 483.69687                         # Get this from LaTeX using \the\textwidth
     inches_per_pt = 1.0/72.27                       # Convert pt to inch
     golden_mean = (np.sqrt(5.0)-1.0)/2.0            # Aesthetic ratio (you could change this)
     fig_width = fig_width_pt*inches_per_pt*scale    # width in inches
-    fig_height = fig_width*golden_mean              # height in inches
+    fig_height = fig_width*golden_mean*0.3              # height in inches
     fig_size = [fig_width,fig_height]
     return fig_size
 
@@ -158,10 +163,10 @@ pdf_with_latex = {                      # setup matplotlib to use latex for outp
     "font.sans-serif": [],
     "font.monospace": [],
     "axes.labelsize": 10,               # LaTeX default is 10pt font.
-    "font.size": 8,
+    "font.size": 7,
     "legend.fontsize": 7,               # Make the legend/label fonts a little smaller
-    "xtick.labelsize": 7,
-    "ytick.labelsize": 7,
+    "xtick.labelsize": 6,
+    "ytick.labelsize": 6,
     "figure.figsize": figsize(1),     # default fig size of 0.9 textwidth
     "pgf.preamble": [
         r"\usepackage[utf8x]{inputenc}",    # use utf8 fonts becasue your computer can handle it :)
@@ -180,51 +185,94 @@ from matplotlib.pyplot import *
 labels = {'mb_10':'MB \n 10 bins', 
             'mb_60':'MB \n 60 bins', 
             'mb_360':'MB \n 360 bins', 
-            'lin_comb':'Lin', 
+            'lin_comb':'Linear', 
             'nn':'NN', 
-            'xgb_run':'XGB'}
+            'xgb_run':"$\mathbf{XGB}$",
+            'h1':"Linear \n (cos$\\theta$, sin$\\theta$)",
+            'h3':"$3^{rd}$ order \n kernel"}
 
-colors = ['#F5A21E']*3 + ['#134B64', '#02A68E', '#FF07CD']
 
-figure(figsize = figsize(0.5))
-
+figure(figsize = figsize(1))
+subplots_adjust()
+# subplots_adjust(hspace = 0.2, right = 0.999)
+outer = gridspec.GridSpec(1,2, wspace = 0.25,  width_ratios = [0.9,1])
+## PLOT 1 ##############################################################################################################
+gs = gridspec.GridSpecFromSubplotSpec(1,1, subplot_spec = outer[0])        
+subplot(gs[0])
 simpleaxis(gca())
 
-# plot([-1, len(methods)], [0,0],'--k', alpha=0.4)
-
-
-labels_plot = [labels[m] for m in methods[0:-1]]
-
-
+methods_to_plot = ['mb_60', 'xgb_run', 'lin_comb', 'h3']
+labels_plot = [labels[m] for m in methods_to_plot]
 mean_pR2 = list()
 sem_pR2 = list()
-for model in methods[0:-1]:            
-    PR2_art = final_data['ADn'][model]['PR2']
-    mean_pR2.append(np.mean(PR2_art))
-    sem_pR2.append(np.std(PR2_art)/np.sqrt(np.size(PR2_art)))        
-
+for model in methods_to_plot:
+    if model in ['h1', 'h3']:            
+        mean_pR2.append(thomas['ADn'][model]['mean'])
+        sem_pR2.append(thomas['ADn'][model]['sem'])
+    else:
+        PR2_art = final_data['ADn'][model]['PR2']
+        mean_pR2.append(np.mean(PR2_art))
+        sem_pR2.append(np.std(PR2_art)/np.sqrt(np.size(PR2_art)))        
 bar(np.arange(np.size(mean_pR2)), mean_pR2, 0.4, align='center',
-        ecolor='k', alpha=.9, color='#134B64', ec='w', yerr=np.array(sem_pR2), label = 'Antero-dorsal nucleus')
+        ecolor='k', alpha=.9, color='#330174', ec='w', yerr=np.array(sem_pR2), label = 'Antero-dorsal nucleus')
 plot(np.arange(np.size(mean_pR2)), mean_pR2, 'k.', markersize=5)
-
 mean_pR2 = list()
 sem_pR2 = list()
-for model in methods[0:-1]:        
-    PR2_art = final_data['Pos'][model]['PR2']
-    mean_pR2.append(np.mean(PR2_art))
-    sem_pR2.append(np.std(PR2_art)/np.sqrt(np.size(PR2_art)))        
-
-bar(np.arange(np.size(mean_pR2))+0.41, mean_pR2, 0.4, align='center',
-        ecolor='k', alpha=.9, color='#F5A21E', ec='w', yerr=np.array(sem_pR2), label = 'Post-subiculum')
+for model in methods_to_plot:
+    if model in ['h1', 'h3']:            
+        mean_pR2.append(thomas['Pos'][model]['mean'])
+        sem_pR2.append(thomas['Pos'][model]['sem'])
+    else:        
+        PR2_art = final_data['Pos'][model]['PR2']
+        mean_pR2.append(np.mean(PR2_art))
+        sem_pR2.append(np.std(PR2_art)/np.sqrt(np.size(PR2_art)))        
+bar(np.arange(np.size(mean_pR2))+0.405, mean_pR2, 0.4, align='center',
+        ecolor='k', alpha=.9, color='#249f87', ec='w', yerr=np.array(sem_pR2), label = 'Post-subiculum')
 plot(np.arange(np.size(mean_pR2))+0.41, mean_pR2, 'k.', markersize=5)
-
-
-# legend(bbox_to_anchor=(0.5, 1.2), loc='upper center', ncol=2, frameon = False)
-# xlim(-0.5, 4.5)
+plot([-1, len(methods_to_plot)], [0,0],'--k', alpha=0.4)
+legend(bbox_to_anchor=(0.5, 1.25), loc='upper center', ncol=2, frameon = False)
+xlim(-0.5,)
 # ylim(0.0, 0.8)
 xticks(np.arange(np.size(mean_pR2))+0.205, labels_plot)
-ylabel('Pseudo-R2')
+ylabel("$Pseudo-R^2$")
 
+# ajouter h1 et h3
+
+## PLOT 2 ##############################################################################################################
+gs = gridspec.GridSpecFromSubplotSpec(1,2, hspace = 0.0, wspace= 0.4, subplot_spec = outer[1])        
+max_depth_step = 2**np.arange(1,11)
+max_trees_step = np.array([5,20,40,80,100,150,200,250,300,350,400,500]) # 5, 20, 100, 500
+subplot(gs[0])
+ax = gca()
+ax.get_xaxis().tick_bottom()
+ax.get_yaxis().tick_left()
+imshow(bic['Pos'], origin = 'lower', interpolation = 'nearest', aspect = 'auto', cmap = "viridis")
+cbar = colorbar(orientation = 'vertical', ticks=[np.min(bic['Pos'])+300])
+cbar.set_ticklabels(['Best'])
+cbar.ax.tick_params(labelsize = 4)
+cbar.update_ticks()
+# yticks(np.arange(len(max_depth_step)), max_depth_step, fontsize = 6)
+yticks([0,2,4,6,8], [2,8,32,128,512], fontsize = 5)
+xticks([1,4,7,11], [20,100,250,500], fontsize = 5)
+ylabel("Depth", fontsize = 6)
+xlabel("Num trees", fontsize = 6)
+
+title("BIC(XGB) \n (one session)", fontsize = 6)
+
+subplot(gs[1])
+ax = gca()
+ax.get_xaxis().tick_bottom()
+ax.get_yaxis().tick_left()
+n = len(bic['best'][:,1])
+plot(bic['best'][:,1]+np.random.uniform(-1,1,n), bic['best'][:,0]+np.random.uniform(-1,1,n), 'o', color = 'black', markersize = 1.5)
+yticks([2,5,8], [2,5,8], fontsize = 5)
+xticks([80,100,150,200], [80,100,150,200], fontsize = 5)
+ylabel("Depth", fontsize = 6)
+xlabel("Num trees", fontsize = 6)
+
+title("Best BIC(XGB) \n (all sessions)", fontsize = 6)
+
+show()
 
 savefig("../../figures/fig1.pdf", dpi=900, bbox_inches = 'tight', facecolor = 'white')
 os.system("evince ../../figures/fig1.pdf &")

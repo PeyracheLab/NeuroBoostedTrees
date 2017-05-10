@@ -1,12 +1,11 @@
 #!/usr/bin/env python
 
 '''
-    File name: main_fig3.py
-    Author: Guillaume Viejo
-    Date created: 28/03/2017    
-    Python Version: 2.7
+	File name: main_fig4.py
+	Author: Guillaume Viejo
+	Date created: 30/03/2017    
+	Python Version: 2.7
 
-fig3.py
 
 '''
 
@@ -19,6 +18,7 @@ from fonctions import *
 import sys, os
 import itertools
 import cPickle as pickle
+import networkx as nx
 
 
 #####################################################################
@@ -73,248 +73,364 @@ def tuning_curve(x, f, nb_bins):
 	x = bins[0:-1] + (bins[1]-bins[0])/2.
 	return (x, tcurve)
 
+def test_features(features, targets, learners = ['glm_pyglmnet', 'nn', 'xgb_run', 'ens']):
+	'''
+		Main function of the script
+		Return : dictionnary with for each models the score PR2 and Yt_hat
+	'''
+	X = data[features].values
+	Y = np.vstack(data[targets].values)
+	Models = {method:{'PR2':[],'Yt_hat':[]} for method in learners}
+	learners_ = list(learners)
+	print learners_
+
+	# Special case for glm_pyglmnet to go parallel
+	if 'glm_pyglmnet' in learners:
+		print('Running glm_pyglmnet...')                
+		# # Map the targets for 6 cores by splitting Y in 6 parts
+		pool = multiprocessing.Pool(processes = 6)
+		value = pool.map(glm_parallel, itertools.izip(range(6), itertools.repeat(X), itertools.repeat(Y)))
+		Models['glm_pyglmnet']['Yt_hat'] = np.vstack([value[i]['Yt_hat'] for i in xrange(6)]).transpose()
+		Models['glm_pyglmnet']['PR2'] = np.vstack([value[i]['PR2'] for i in xrange(6)])     
+		learners_.remove('glm_pyglmnet')        
+
+	for i in xrange(Y.shape[1]):
+		y = Y[:,i]
+		# TODO : make sure that 'ens' is the last learner
+		for method in learners_:
+			if method != 'ens': # FIRST STAGE LEARNING          
+				print('Running '+method+'...')                              
+				Yt_hat, PR2 = fit_cv(X, y, algorithm = method, n_cv=8, verbose=1)       
+				Models[method]['Yt_hat'].append(Yt_hat)
+				Models[method]['PR2'].append(PR2)           
+
+			elif method == 'ens': # SECOND STAGE LEARNING
+				X_ens = np.transpose(np.array([Models[m]['Yt_hat'][i] for m in learners if m != method]))
+				#We can use XGBoost as the 2nd-stage model
+				Yt_hat, PR2 = fit_cv(X_ens, y, algorithm = 'xgb_run', n_cv=8, verbose=1)        
+				Models['ens']['Yt_hat'].append(Yt_hat)      
+				Models['ens']['PR2'].append(PR2)                        
+
+	for m in Models.iterkeys():
+		Models[m]['Yt_hat'] = np.array(Models[m]['Yt_hat'])
+		Models[m]['PR2'] = np.array(Models[m]['PR2'])
+		
+	return Models
+
+
 #####################################################################
 # COMBINATIONS DEFINITION
 #####################################################################
-combination = {
-	'1.ADn':	{
-			'features' 	:	['ang'],
-			'targets'	:	[i for i in list(data) if i.split(".")[0] == 'ADn']
-		},
-	'1.Pos':	{
-			'features' 	:	['ang'],
-			'targets'	:	[i for i in list(data) if i.split(".")[0] == 'Pos']
-		},		
-	'2.ADn':	{
-			'features' 	:	['ang', 'x', 'y'],
-			'targets'	:	[i for i in list(data) if i.split(".")[0] == 'ADn']
-		},
-	'2.Pos':	{
-			'features' 	:	['ang', 'x', 'y'],
-			'targets'	:	[i for i in list(data) if i.split(".")[0] == 'Pos']
-		},	
-	'3.ADn':	{
-			'features' 	:	['x', 'y'],
-			'targets'	:	[i for i in list(data) if i.split(".")[0] == 'ADn']
-		},
-	'3.Pos':	{
-			'features' 	:	['x', 'y'],
-			'targets'	:	[i for i in list(data) if i.split(".")[0] == 'Pos']
-		}
-	}
+combination = {}
+targets = [i for i in list(data) if i.split(".")[0] in ['Pos', 'ADn']]
 
+for n in ['Pos', 'ADn']:			
+	combination[n] = {'peer':{},'cros':{}}	
+	sub = [i for i in list(data) if i.split(".")[0] == n]
+	for k in sub:
+		combination[n]['peer'][k] = {	'features'	: [i for i in sub if i != k],
+										'targets'	: k
+									}
+		combination[n]['cros'][k] = { 	'features'	: [i for i in targets if i.split(".")[0] != k.split(".")[0]],
+										'targets'	: k
+									}
+
+########################################################################
+# MAIN LOOP FOR R2
+########################################################################
+# methods = ['xgb_run', 'lin_comb']
+# final_data = {}
+# for g in combination.iterkeys():
+# 	final_data[g] = {}
+# 	for w in combination[g].iterkeys():
+# 		final_data[g][w] = {}
+# 		for k in combination[g][w].iterkeys():
+# 		    features = combination[g][w][k]['features']
+# 		    targets =  combination[g][w][k]['targets'] 
+# 		    results = test_features(features, targets, methods)
+# 		    final_data[g][w][k] = results
+
+# with open("../data/fig4.pickle", 'wb') as f:
+#   pickle.dump(final_data, f)
+
+with open("../data/fig4.pickle", 'rb') as f:
+	final_data = pickle.load(f)
 
 #####################################################################
 # LEARNING XGB
 #####################################################################
 
-bsts = {i:{} for i in combination.iterkeys()} # to keep the boosted tree
-params = {'objective': "count:poisson", #for poisson output
-    'eval_metric': "logloss", #loglikelihood loss
-    'seed': 2925, #for reproducibility
-    'silent': 1,
-    'learning_rate': 0.05,
-    'min_child_weight': 2, 'n_estimators': 10,
-    'subsample': 0.6, 'max_depth': 400, 'gamma': 0.4}        
-num_round = 400
+# bsts = {}
+# params = {'objective': "count:poisson", #for poisson output
+# 	'eval_metric': "logloss", #loglikelihood loss
+# 	'seed': 2925, #for reproducibility
+# 	'silent': 1,
+# 	'learning_rate': 0.05,
+# 	'min_child_weight': 2, 'n_estimators': 580,
+# 	'subsample': 0.6, 'max_depth': 400, 'gamma': 0.4}    
+# num_round = 400
 
-for k in combination.keys():
-	features = combination[k]['features']
-	targets = combination[k]['targets']	
-	X = data[features].values
-	Yall = data[targets].values	
-	for i in xrange(Yall.shape[1]):
-		dtrain = xgb.DMatrix(X, label=Yall[:,i])
-		bst = xgb.train(params, dtrain, num_round)
-		bsts[k][targets[i]] = bst
+# for g in combination.iterkeys():
+# 	bsts[g] = {}
+# 	for w in combination[g].iterkeys():
+# 		bsts[g][w] = {}
+# 		for k in combination[g][w].iterkeys():
+# 			features = combination[g][w][k]['features']
+# 			targets =  combination[g][w][k]['targets']	
+# 			X = data[features].values
+# 			Yall = data[targets].values		
+# 			dtrain = xgb.DMatrix(X, label=Yall)
+# 			bst = xgb.train(params, dtrain, num_round)
+# 			bsts[g][w][k] = bst
 
-#####################################################################
-# TUNING CURVE
-#####################################################################
+with open("../data/fig4_bsts.pickle", 'rb') as f:
+	bsts = pickle.load(f)
+
+# #####################################################################
+# # TUNING CURVE
+# #####################################################################
+all_neurons = [i for i in list(data) if i.split(".")[0] in ['Pos', 'ADn']]
 X = data['ang'].values
-tuningc = {}
-alln = [i for i in list(data) if i.split(".")[0] in ['Pos', 'ADn']]
-for t in alln:
-	Y = data[t].values
-	tuningc[t] = tuning_curve(X, Y, nb_bins = 60)
+Yall = data[all_neurons].values
+tuningc = {all_neurons[i]:tuning_curve(X, Yall[:,i], nb_bins = 100) for i in xrange(Yall.shape[1])}
 
 
 #####################################################################
 # EXTRACT TREE STRUCTURE
 #####################################################################
 thresholds = {}
-for i in bsts.iterkeys():
-	thresholds[i] = {}
-	for j in bsts[i].iterkeys():
-		thresholds[i][j] = extract_tree_threshold(bsts[i][j])		
+for g in combination.iterkeys():
+	thresholds[g] = {}
+	for w in combination[g].iterkeys():
+		thresholds[g][w] = {}
+		for k in combination[g][w].iterkeys():
+			thresholds[g][w][k] = extract_tree_threshold(bsts[g][w][k])		
 
+# need to sort the features by the number of splits
+sorted_features = {}
+for g in combination.iterkeys():
+	sorted_features[g] = {}
+	for w in combination[g].iterkeys():
+		sorted_features[g][w] = {}
+		for k in combination[g][w].iterkeys():
+			count = np.array([len(thresholds[g][w][k][f]) for f in thresholds[g][w][k].iterkeys()])
+			name = np.array([combination[g][w][k]['features'][int(f[1:])] for f in thresholds[g][w][k].iterkeys()])            
+			sorted_features[g][w][k] = np.array([name[np.argsort(count)], np.sort(count)])
 
-#####################################################################
-# DENSITY OF SPLIT TO CENTER
-#####################################################################
-angdens = {}
-mean_angdens = {}
-for g in thresholds.iterkeys():	
-	if int(g.split(".")[0]) in [1,2]:  
-		angdens[g] = {}
-		mean_angdens[g] = []
-		for k in thresholds[g].iterkeys():
-			thr = np.copy(thresholds[g][k]['f0'])
-			tun = np.copy(tuningc[k])
-			# correct thr with offset of tuning curve
-			offset = tun[0][np.argmax(tun[1])]
-			thr -= offset 
-			thr[thr<= -np.pi] += 2*np.pi
-			thr[thr> np.pi] -= 2*np.pi
-			if thr.max() > np.pi or thr.min() < -np.pi:
-				print "ERror"
-				sys.exit()
-					
-			bins = np.linspace(-np.pi, np.pi+1e-8, 20+1)
-			hist, bin_edges = np.histogram(thr, bins, density = False)
-			hist = hist/float(hist.sum())
-			x = bin_edges[0:-1] + (bin_edges[1]-bin_edges[0])/2.
-			x[x>np.pi] -= 2*np.pi
-			hist = hist[np.argsort(x)]
-			angdens[g][k] = (np.sort(x), hist)
-			mean_angdens[g].append(hist)
-		mean_angdens[g] = (x, np.mean(mean_angdens[g], 0))
-
-
-xydens = {}
-mean_xydens = {}
-for g in thresholds.iterkeys():
-	if int(g.split(".")[0]) in [2,3]:  
-		xydens[g] = {}
-		mean_xydens[g] = {'x':[], 'y':[]}
-		for k in thresholds[g].iterkeys():
-			xt = np.copy(thresholds[g][k]['f0'])
-			yt = np.copy(thresholds[g][k]['f1'])
-			# let's normalize xt and yt
-			xt -= xt.min()
-			xt /= xt.max()
-			yt -= yt.min()
-			yt /= yt.max()			
-			bins = np.linspace(0, 1, 20+1)
-			xh, bin_edges = np.histogram(xt, bins, density = False)
-			yh, bin_edges = np.histogram(yt, bins, density = False)
-			xh = xh/float(xh.sum())
-			yh = yh/float(yh.sum())			
-			x = bin_edges[0:-1] + (bin_edges[1]-bin_edges[0])/2.
-			xydens[g][k] = (x, xh, yh)
-			mean_xydens[g]['x'].append(xh)
-			mean_xydens[g]['y'].append(yh)
-		mean_xydens[g]['x'] = np.mean(mean_xydens[g]['x'], 0)
-		mean_xydens[g]['y'] = np.mean(mean_xydens[g]['y'], 0)
+# number of splits versus number of individuals value for each neurons
+splitvar = {}
+plotsplitvar = {}
+for g in combination.iterkeys():
+	splitvar[g] = {}
+	plotsplitvar[g] = {}
+	for w in combination[g].iterkeys():
+		splitvar[g][w] = {}
+		plotsplitvar[g][w] = {'nsplit':[], 'unique':[]}
+		for k in combination[g][w].iterkeys():
+			count = [len(np.unique(data[n].values)) for n in sorted_features[g][w][k][0]]
+			splitvar[g][w][k] = np.array([count, sorted_features[g][w][k][1]]).astype(int)
+			plotsplitvar[g][w]['unique'].append(count)
+			plotsplitvar[g][w]['nsplit'].append(sorted_features[g][w][k][1].astype('int'))
+		plotsplitvar[g][w]['unique'] = np.array(plotsplitvar[g][w]['unique']).flatten()
+		plotsplitvar[g][w]['nsplit'] = np.array(plotsplitvar[g][w]['nsplit']).flatten()
 		
-ratio = {}
-for g in ['2.Pos', '2.ADn']:	
-	ratio[g.split('.')[1]] = {}
-	for k in thresholds[g].iterkeys():		
-		ratio[g.split('.')[1]][k] = np.array([len(thresholds[g][k][f]) for f in thresholds[g][k].iterkeys()])
-		ratio[g.split('.')[1]][k] = ratio[g.split('.')[1]][k]/float(np.sum(ratio[g.split('.')[1]][k]))
 
-
+#####################################################################
+# DISTANCE TO CENTER OF FIELD
+#####################################################################
+distance = {}
+plotdistance = {}
+for g in combination.iterkeys():
+	distance[g] = {}
+	plotdistance[g] = {}
+	for w in combination[g].iterkeys():
+		distance[g][w] = {}
+		plotdistance[g][w] = {'nsplit':[], 'distance':[]}
+		for k in combination[g][w].iterkeys():
+			com_neuron = tuningc[k][0][np.argmax(tuningc[k][1])]				
+			com = np.array([tuningc[n][0][np.argmax(tuningc[n][1])] for n in sorted_features[g][w][k][0]])			
+			dist = np.abs(com - com_neuron)
+			tmp = 2*np.pi - dist[dist>np.pi]
+			dist[dist>np.pi] = tmp
+			plotdistance[g][w]['distance'].append(dist)
+			plotdistance[g][w]['nsplit'].append(sorted_features[g][w][k][1].astype('int'))
+		plotdistance[g][w]['distance'] = np.array(plotdistance[g][w]['distance']).flatten()
+		plotdistance[g][w]['nsplit'] = np.array(plotdistance[g][w]['nsplit']).flatten()
 
 
 #####################################################################
 # PLOTTING
 #####################################################################
 def figsize(scale):
-    fig_width_pt = 483.69687                         # Get this from LaTeX using \the\textwidth
-    inches_per_pt = 1.0/72.27                       # Convert pt to inch
-    golden_mean = (np.sqrt(5.0)-1.0)/2.0            # Aesthetic ratio (you could change this)
-    fig_width = fig_width_pt*inches_per_pt*scale    # width in inches
-    fig_height = fig_width*golden_mean *0.5          # height in inches
-    fig_size = [fig_width,fig_height]
-    return fig_size
+	fig_width_pt = 483.69687                         # Get this from LaTeX using \the\textwidth
+	inches_per_pt = 1.0/72.27                       # Convert pt to inch
+	golden_mean = (np.sqrt(5.0)-1.0)/2.0            # Aesthetic ratio (you could change this)
+	fig_width = fig_width_pt*inches_per_pt*scale    # width in inches
+	fig_height = fig_width*golden_mean * 0.5              # height in inches
+	fig_size = [fig_width,fig_height]
+	return fig_size
 
 def simpleaxis(ax):
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.get_xaxis().tick_bottom()
-    ax.get_yaxis().tick_left()
-    # ax.xaxis.set_tick_params(size=6)
-    # ax.yaxis.set_tick_params(size=6)
+	ax.spines['top'].set_visible(False)
+	ax.spines['right'].set_visible(False)
+	ax.get_xaxis().tick_bottom()
+	ax.get_yaxis().tick_left()
+	# ax.xaxis.set_tick_params(size=6)
+	# ax.yaxis.set_tick_params(size=6)
 
+def myticks(x,pos):
+    if x == 0: return "$0$"
+    exponent = int(np.log10(x))
+    coeff = x/10**exponent
+    return r"${:2.0f} \times 10^{{ {:2d} }}$".format(coeff,exponent)
 
 import matplotlib as mpl
 
 mpl.use("pdf")
+
+
+
 pdf_with_latex = {                      # setup matplotlib to use latex for output
-    "pgf.texsystem": "pdflatex",        # change this if using xetex or lautex
-    "text.usetex": True,                # use LaTeX to write all text
-    "font.family": "serif",
-    "font.serif": [],                   # blank entries should cause plots to inherit fonts from the document
-    "font.sans-serif": [],
-    "font.monospace": [],
-    "axes.labelsize": 6,               # LaTeX default is 10pt font.
-    "font.size": 7,
-    "legend.fontsize": 6,               # Make the legend/label fonts a little smaller
-    "xtick.labelsize": 6,
-    "ytick.labelsize": 6,
-    "figure.figsize": figsize(1),     # default fig size of 0.9 textwidth
-    "pgf.preamble": [
-        r"\usepackage[utf8x]{inputenc}",    # use utf8 fonts becasue your computer can handle it :)
-        r"\usepackage[T1]{fontenc}",        # plots will be generated using this preamble
-        ],
-    "lines.markeredgewidth" : 0.2,
-    "axes.linewidth"        : 0.5,
-    "ytick.major.size"      : 1.5,
-    "xtick.major.size"      : 1.5
-    }       
+	"pgf.texsystem": "pdflatex",        # change this if using xetex or lautex
+	"text.usetex": True,                # use LaTeX to write all text
+	"font.family": "serif",
+	"font.serif": [],                   # blank entries should cause plots to inherit fonts from the document
+	"font.sans-serif": [],
+	"font.monospace": [],
+	"axes.labelsize": 6,               # LaTeX default is 10pt font.
+	"font.size": 7,
+	"legend.fontsize": 6,               # Make the legend/label fonts a little smaller
+	"xtick.labelsize": 6,
+	"ytick.labelsize": 6,
+	"figure.figsize": figsize(1),     # default fig size of 0.9 textwidth
+	"pgf.preamble": [
+		r"\usepackage[utf8x]{inputenc}",    # use utf8 fonts becasue your computer can handle it :)
+		r"\usepackage[T1]{fontenc}",        # plots will be generated using this preamble
+		],
+	"lines.markeredgewidth" : 0.2,
+	"axes.linewidth"        : 0.5,
+	"ytick.major.size"      : 1.5,
+	"xtick.major.size"      : 1.5
+	}    
 mpl.rcParams.update(pdf_with_latex)
 import matplotlib.gridspec as gridspec
 from matplotlib.pyplot import *
 
-colors_ = ['#134B64', '#F5A21E']
-title_ = {	'ADn':'Antero-dorsal nucleus',
-			'Pos':'Post-subiculum'	}
 
+labels = {'mb_10':'MB \n 10 bins', 
+			'mb_60':'MB \n 60 bins', 
+			'mb_360':'MB \n 360 bins', 
+			'lin_comb':'Lin', 
+			'nn':'NN', 
+			'xgb_run':'XGB'}
 
-
+colors_ = {'ADn':'#134B64', 'Pos':'#F5A21E'}
+labels_plot = [labels[m] for m in methods[0:-1]]
 
 figure(figsize = figsize(1))
-
-for g,i in zip(['1.ADn', '1.Pos'], xrange(2)):
-	subplot(1,3,i+1)
-	subplots_adjust(wspace = 0.5)
-	simpleaxis(gca())
-	for k in angdens[g].iterkeys():
-		plot(angdens[g][k][0], angdens[g][k][1], '-', color = colors_[i], linewidth = 0.4, alpha = 0.5)
-
-	plot(mean_angdens[g][0], mean_angdens[g][1], '-', color = colors_[i], linewidth = 1.2, alpha = 1)	
-	# plot(mean_angdens['2.'+g.split('.')[1]][0], mean_angdens['2.'+g.split('.')[1]][1], ':', color = colors_[i], linewidth = 1, alpha = 1)
-
-	ylabel("Density of angular splits")
-	# xlabel("Angle (rad)")
-	title(title_[g.split(".")[1]])
-	xlim(-np.pi, np.pi)
-	xticks([-np.pi, 0, np.pi], ('$-\pi$', '0', '$\pi$'))
-	xlabel('Centered', labelpad = 0.4)
-
-subplot(1,3,3)
+# subplots_adjust(hspace = 0.2, wspace = 0.4)
+outer = gridspec.GridSpec(1,2, width_ratios=[1,2])
+# SUBPLOT 1 ################################################################
+# gs = gridspec.GridSpecFromSubplotSpec(1,1,subplot_spec = outer[0])
+subplot(outer[0])
 simpleaxis(gca())
-x = np.arange(3, dtype = float)
-for g, i in zip(ratio.iterkeys(), xrange(2)):
-	mean = []
-	for k in ratio[g].iterkeys():
-		plot(x, ratio[g][k], 'o', alpha = 0.5, color = colors_[i], markersize = 2)
-		mean.append(ratio[g][k])
-	mean = np.mean(mean, 0)
-	bar(x, mean, 0.4, align='center',
-        ecolor='k', alpha=.9, color=colors_[i], ec='w')
+y = []
+err = []
+x = [0.0]
+color = []
+for k in ['ADn', 'Pos']:            
+	for g in ['peer', 'cros']:
+		for m in ['xgb_run']:		
+			PR2_art = []    		
+			color.append(colors_[k])
+			for n in final_data[k][g].iterkeys():
+				PR2_art.append(final_data[k][g][n][m]['PR2'])
+			y.append(np.mean(PR2_art))
+			err.append(np.std(PR2_art)/np.sqrt(np.size(PR2_art)))
+			x.append(x[-1]+0.42)
+		x[-1] += 0.3
+	x[-1] += 0.5
+		
+x = np.array(x)[0:-1]
+y = np.array(y)
+err = np.array(err)		
+# x_adn = x[0:-1][np.arange(0, len(y),2)]
+# y_adn = y[np.arange(0, len(y),2)]
+# e_adn = err[np.arange(0, len(y),2)]
+# x_pos = x[0:-1][np.arange(1, len(y),2)]
+# y_pos = y[np.arange(1, len(y),2)]
+# e_pos = err[np.arange(1, len(y),2)]
 
-	x += 0.41
-ylabel('Density of splits')
+bar(x[0:2], y[0:2], 0.4, align='center',
+			ecolor='k', color = colors_['ADn'], alpha=.9, ec='w', yerr=err[0:2], label = 'Antero Dorsal nucleus')
+bar(x[2:4], y[2:4], 0.4, align='center',
+			ecolor='k', color = colors_['Pos'], alpha=.9, ec='w', yerr=err[2:4], label = 'Post Subiculum')
+			
+plot(x, y, 'k.', markersize=3)         
 
-xticks(np.arange(3)+0.205, ('Angle','x pos','y pos'))
+# xlim(np.min(x)-0.5, np.max(x[0:-1])+0.5)
+ylabel('Pseudo-R2 (XGBoost)')
+xticks(x, 
+	["ADn $\Rightarrow$ ADn", "Post-S $\Rightarrow$ ADn", "Post-S $\Rightarrow$ Post-S", "ADn $\Rightarrow$ Post-S"], 
+	rotation = 30, 
+	ha = 'right'
+	)
 
+legend(bbox_to_anchor=(0.5, 1.2), loc='upper center', ncol=1, frameon = False)
 
+# figtext(0.2, -0.2, "ADn $\Rightarrow$ ADn \n Post-S $\Rightarrow$ Post-S \n \scriptsize{(Features $\Rightarrow$ Target)}")
+# figtext(0.6, -0.14, "ADn $\Rightarrow$ Post-S \n Post-S $\Rightarrow$ ADn")
 
+# SUBPLOT 2 ################################################################
+gs = gridspec.GridSpecFromSubplotSpec(2,4,subplot_spec = outer[1], hspace = 0.8, wspace = 0.5)
+matplotlib.rcParams.update({"axes.labelsize": 	4,
+							"font.size": 		4,
+							"legend.fontsize": 	4,
+							"xtick.labelsize": 	4,
+							"ytick.labelsize": 	4,   
+							})               # Make the legend/label fonts a little smaller
+title_ = ["ADn $\Rightarrow$ ADn", "Post-S $\Rightarrow$ ADn", "Post-S $\Rightarrow$ Post-S", "ADn $\Rightarrow$ Post-S"]							
+count = 0
+for g in plotsplitvar.keys():
+	for w in ['peer', 'cros']:
+		subplot(gs[count])
+		simpleaxis(gca())
+		plot(plotdistance[g][w]['distance'], plotdistance[g][w]['nsplit'], 'o', color = colors_[g], markersize = 1)
+		locator_params(nbins=2)	
+		
+		
+		ticklabel_format(style='sci', axis='x', scilimits=(0,0), fontsize = 4)
+		ticklabel_format(style='sci', axis='y', scilimits=(0,0), fontsize = 4)
+		xticks([0, np.pi], ['0', '$\pi$'], fontsize = 4)
+		yticks(fontsize = 4)
+		
+		xlabel("Angular distance", fontsize = 4)		
+		if count == 0:
+			ylabel("Number of splits", fontsize = 4)
 
+		title(title_[count], fontsize = 4, loc = 'left', y = 1.3)
+		xlim(0, np.pi)
+		subplot(gs[count+4])
+		simpleaxis(gca())
+		
+		plot(plotsplitvar[g][w]['unique'], plotsplitvar[g][w]['nsplit'], 'o', color = colors_[g], markersize = 1)
+		# for k in splitvar[g][w].keys():
+		# 	plot(splitvar[g][w][k][1], splitvar[g][w][k][0], '-', color = colors_[g], markersize = 1, alpha = 0.4)
+		locator_params(nbins=2)	
+		
+		
+		ticklabel_format(style='sci', axis='x', scilimits=(0,0), fontsize = 4)
+		ticklabel_format(style='sci', axis='y', scilimits=(0,0), fontsize = 4)
+		xticks(fontsize = 4)
+		yticks(fontsize = 4)
+		
+		xlabel("Number of values", fontsize = 4, labelpad = 9)
+		
 
-# subplots_adjust(hspace = 0.7, wspace = 0.7)
+		if count == 0:
+			ylabel("Number of splits", fontsize = 4)
+		
+		count += 1
 
-savefig('../../figures/fig3.pdf', dpi = 900, bbox_inches = 'tight', facecolor = 'white')
-os.system("evince ../../figures/fig3.pdf &")
+savefig("../../figures/fig4.pdf", dpi=900, bbox_inches = 'tight', facecolor = 'white')
+os.system("evince ../../figures/fig4.pdf &")

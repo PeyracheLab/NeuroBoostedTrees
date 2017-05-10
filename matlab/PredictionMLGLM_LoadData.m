@@ -1,4 +1,5 @@
-dset = 'Mouse28/Mouse28-140313';
+%dset = 'Mouse28/Mouse28-140313';
+dset = 'Mouse25/Mouse25-140129';
 
 %should be define separately in the general workflow so that we can all use
 %the same scripts, for example we could each have our own

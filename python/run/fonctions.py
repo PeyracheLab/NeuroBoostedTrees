@@ -135,17 +135,17 @@ def xgb_run(Xr, Yr, Xt):
     # 'min_child_weight': 2, 'n_estimators': 580,
     # 'subsample': 0.6, 'max_depth': 5, 'gamma': 0.4}        
     params = {'objective': "count:poisson", #for poisson output
-    'eval_metric': "logloss", #loglikelihood loss
+    'eval_metric': "poisson-nloglik", #loglikelihood loss
     'seed': 2925, #for reproducibility
     'silent': 1,
     'learning_rate': 0.05,
     'min_child_weight': 2, 'n_estimators': 580,
-    'subsample': 0.6, 'max_depth': 400, 'gamma': 0.4}
+    'subsample': 0.6, 'max_depth': 4, 'gamma': 0.0}
     
     dtrain = xgb.DMatrix(Xr, label=Yr)
     dtest = xgb.DMatrix(Xt)
 
-    num_round = 400
+    num_round = 150
     bst = xgb.train(params, dtrain, num_round)
 
     Yt = bst.predict(dtest)
