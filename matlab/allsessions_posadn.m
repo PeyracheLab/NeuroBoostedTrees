@@ -2,14 +2,14 @@ path_to_data = '/home/guillaume/Dropbox (Peyrache Lab)/Peyrache Lab Team Folder/
 
 file = List2Cell(fullfile(path_to_data,'datasets_AdnPostSub2.list')); 
 
-x = []
-y = []
+x = [];
+y = [];
 
 for i = 1:size(file)
     dset = file(i)           
     data_dir = fullfile(path_to_data, char(dset));
     cd(data_dir);
-    binSize = 0.005; %in seconds
+    binSize = 0.020; %in seconds
     load('Analysis/BehavEpochs.mat','wakeEp');
     load('Analysis/SpikeData.mat', 'S', 'shank');
     load('Analysis/HDCells.mat'); 
@@ -71,6 +71,6 @@ for i = 1:size(file)
     y = [y n];
     
     tmp = strsplit(char(dset), '/');    
-    %save(strcat('XGBoost_session/boosted_tree.', char(tmp(2)), '.mat'), '-struct', 'data_to_save');
+    save(strcat('/home/guillaume/Prediction_ML_GLM/python/data/sessions/wake/boosted_tree.', char(tmp(2)), '.mat'), '-struct', 'data_to_save');
 end
     

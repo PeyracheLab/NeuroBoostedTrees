@@ -1,5 +1,5 @@
-%dset = 'Mouse28/Mouse28-140313';
-dset = 'Mouse25/Mouse25-140129';
+dset = 'Mouse28/Mouse28-140313';
+%dset = 'Mouse25/Mouse25-140129';
 
 %should be define separately in the general workflow so that we can all use
 %the same scripts, for example we could each have our own
@@ -12,7 +12,9 @@ cd(data_dir);
 
 %Parameters
 binSize = 0.005; %in seconds
-%
+%binSize = 0.020;
+%binSize = 0.200; % for decoding
+
 
 %when the animal was exploring the arena
 load('Analysis/BehavEpochs.mat','wakeEp');
@@ -123,4 +125,4 @@ Sp = Restrict(linSpd,Q);
 cd(path_to_data);    
 
 data_to_save = struct('X',  Data(Xq), 'Y',  Data(Yq), 'Ang', Data(Aq), 'speed', Data(Sp), 'ADn', dQadn(:,prefAngThIx), 'Pos', dQpos(:,prefAngPoIx));
-%save('data_test_boosted_tree.mat', '-struct', 'data_to_save');
+save('data_test_boosted_tree_05ms.mat', '-struct', 'data_to_save');

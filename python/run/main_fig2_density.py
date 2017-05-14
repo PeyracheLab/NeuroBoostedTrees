@@ -24,7 +24,7 @@ import cPickle as pickle
 #####################################################################
 # DATA LOADING
 #####################################################################
-adrien_data = scipy.io.loadmat(os.path.expanduser('~/Dropbox (Peyrache Lab)/Peyrache Lab Team Folder/Data/HDCellData/data_test_boosted_tree.mat'))
+adrien_data = scipy.io.loadmat(os.path.expanduser('~/Dropbox (Peyrache Lab)/Peyrache Lab Team Folder/Data/HDCellData/data_test_boosted_tree_20ms.mat'))
 # m1_imported = scipy.io.loadmat('/home/guillaume/spykesML/data/m1_stevenson_2011.mat')
 
 #####################################################################
@@ -66,11 +66,14 @@ def extract_tree_threshold(trees):
 		thr[k] = np.sort(np.array(thr[k]))
 	return thr
 
-def tuning_curve(x, f, nb_bins):	
+def tuning_curve(x, f, nb_bins, tau = 50.0):	
 	bins = np.linspace(x.min(), x.max()+1e-8, nb_bins+1)
 	index = np.digitize(x, bins).flatten()    
-	tcurve = np.array([np.mean(f[index == i]) for i in xrange(1, nb_bins+1)])  	
+	tcurve = np.array([np.sum(f[index == i]) for i in xrange(1, nb_bins+1)])  	
+	occupancy = np.array([np.sum(index == i) for i in xrange(1, nb_bins+1)])
+	tcurve = (tcurve/occupancy)*tau
 	x = bins[0:-1] + (bins[1]-bins[0])/2.
+	# tcurve = tcurve
 	return (x, tcurve)
 
 #####################################################################
@@ -86,11 +89,11 @@ combination = {
 			'targets'	:	[i for i in list(data) if i.split(".")[0] == 'Pos']
 		},		
 	'2.ADn':	{
-			'features' 	:	['ang', 'x', 'y'],
+			'features' 	:	['x', 'y', 'ang'],
 			'targets'	:	[i for i in list(data) if i.split(".")[0] == 'ADn']
 		},
 	'2.Pos':	{
-			'features' 	:	['ang', 'x', 'y'],
+			'features' 	:	['x', 'y', 'ang'],
 			'targets'	:	[i for i in list(data) if i.split(".")[0] == 'Pos']
 		},	
 	'3.ADn':	{
@@ -114,8 +117,8 @@ params = {'objective': "count:poisson", #for poisson output
     'seed': 2925, #for reproducibility
     'silent': 1,
     'learning_rate': 0.05,
-    'min_child_weight': 2, 'n_estimators': 10,
-    'subsample': 0.6, 'max_depth': 4, 'gamma': 0.4}        
+    'min_child_weight': 2, 'n_estimators': 150,
+    'subsample': 0.6, 'max_depth': 4, 'gamma': 0.0}        
 num_round = 150
 
 for k in combination.keys():
@@ -152,6 +155,7 @@ for i in bsts.iterkeys():
 #####################################################################
 # DENSITY OF SPLIT TO CENTER
 #####################################################################
+nb_bins = 20
 angdens = {}
 mean_angdens = {}
 for g in thresholds.iterkeys():	
@@ -159,7 +163,10 @@ for g in thresholds.iterkeys():
 		angdens[g] = {}
 		mean_angdens[g] = []
 		for k in thresholds[g].iterkeys():
-			thr = np.copy(thresholds[g][k]['f0'])
+			if int(g.split(".")[0]) == 1:  
+				thr = np.copy(thresholds[g][k]['f0'])
+			else :
+				thr = np.copy(thresholds[g][k]['f2'])
 			tun = np.copy(tuningc[k])
 			# correct thr with offset of tuning curve
 			offset = tun[0][np.argmax(tun[1])]
@@ -170,7 +177,7 @@ for g in thresholds.iterkeys():
 				print "ERror"
 				sys.exit()
 					
-			bins = np.linspace(-np.pi, np.pi+1e-8, 20+1)
+			bins = np.linspace(-np.pi, np.pi+1e-8, nb_bins+1)
 			hist, bin_edges = np.histogram(thr, bins, density = False)
 			hist = hist/float(hist.sum())
 			x = bin_edges[0:-1] + (bin_edges[1]-bin_edges[0])/2.
@@ -183,10 +190,12 @@ for g in thresholds.iterkeys():
 
 xydens = {}
 mean_xydens = {}
+twod_xydens = {}
 for g in thresholds.iterkeys():
 	if int(g.split(".")[0]) in [2,3]:  
 		xydens[g] = {}
 		mean_xydens[g] = {'x':[], 'y':[]}
+		twod_xydens[g] = []
 		for k in thresholds[g].iterkeys():
 			xt = np.copy(thresholds[g][k]['f0'])
 			yt = np.copy(thresholds[g][k]['f1'])
@@ -204,14 +213,22 @@ for g in thresholds.iterkeys():
 			xydens[g][k] = (x, xh, yh)
 			mean_xydens[g]['x'].append(xh)
 			mean_xydens[g]['y'].append(yh)
+			twod_xydens[g].append(np.vstack(xydens[g][k][1])*xydens[g][k][2])
+
 		mean_xydens[g]['x'] = np.mean(mean_xydens[g]['x'], 0)
 		mean_xydens[g]['y'] = np.mean(mean_xydens[g]['y'], 0)
-		
+		twod_xydens[g] = np.array(twod_xydens[g])
+		twod_xydens[g] = twod_xydens[g].mean(0)
+
 ratio = {}
 for g in ['2.Pos', '2.ADn']:	
 	ratio[g.split('.')[1]] = {}
-	for k in thresholds[g].iterkeys():		
-		ratio[g.split('.')[1]][k] = np.array([len(thresholds[g][k][f]) for f in thresholds[g][k].iterkeys()])
+	for k in thresholds[g].iterkeys():						
+		ratio[g.split('.')[1]][k] = np.array([len(thresholds[g][k][f]) for f in ['f2', 'f0', 'f1']])
+		ratio[g.split('.')[1]][k] = np.array([
+				len(thresholds[g][k]['f2']),
+				len(thresholds[g][k]['f0'])+len(thresholds[g][k]['f1'])
+			])
 		ratio[g.split('.')[1]][k] = ratio[g.split('.')[1]][k]/float(np.sum(ratio[g.split('.')[1]][k]))
 
 
@@ -219,8 +236,10 @@ all_data = {}
 all_data['angdens'] = angdens
 all_data['mean_angdens'] = mean_angdens
 all_data['ratio'] = ratio
+all_data['twod_xydens'] = twod_xydens
 pickle.dump(all_data, open("../data/fig2_density.pickle", 'wb'))
 
+sys.exit()
 
 #####################################################################
 # PLOTTING

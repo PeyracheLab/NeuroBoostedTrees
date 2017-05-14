@@ -139,7 +139,7 @@ def xgb_run(Xr, Yr, Xt):
     'seed': 2925, #for reproducibility
     'silent': 1,
     'learning_rate': 0.05,
-    'min_child_weight': 2, 'n_estimators': 580,
+    'min_child_weight': 2, 'n_estimators': 150,
     'subsample': 0.6, 'max_depth': 4, 'gamma': 0.0}
     
     dtrain = xgb.DMatrix(Xr, label=Yr)
@@ -428,3 +428,34 @@ def tsne(X = np.array([]), no_dims = 2, initial_dims = 50, perplexity = 30.0):
 
     # Return solution
     return Y;
+
+def xgb_decodage(Xr, Yr, Xt):
+    # params = {'objective': "count:poisson", #for poisson output
+    # 'eval_metric': "logloss", #loglikelihood loss
+    # 'seed': 2925, #for reproducibility
+    # 'silent': 1,
+    # 'learning_rate': 0.05,
+    # 'min_child_weight': 2, 'n_estimators': 580,
+    # 'subsample': 0.6, 'max_depth': 5, 'gamma': 0.4}        
+    params = {'objective': "reg:linear", #for poisson output
+    'seed': 2925, #for reproducibility
+    'silent': 1,
+    'learning_rate': 0.05,
+    'min_child_weight': 2, 'n_estimators': 150,
+    'subsample': 0.6, 'max_depth': 4, 'gamma': 0.0}
+    
+    dtrain = xgb.DMatrix(Xr, label=Yr)
+    dtest = xgb.DMatrix(Xt)
+
+    num_round = 150
+    bst = xgb.train(params, dtrain, num_round)
+    
+    Yt = bst.predict(dtest)
+    return Yt
+
+def lin_decodage(Xr, Yr, Xt):
+    lr = LinearRegression()
+    lr.fit(Xr, Yr)
+    Yt = lr.predict(Xt)    
+    return Yt     
+

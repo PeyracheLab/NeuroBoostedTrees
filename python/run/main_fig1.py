@@ -134,6 +134,7 @@ thomas = pickle.load(open("../data/harmo_thomas.pickle", 'rb'))
 with open("../data/grid_search_ang_adn_pos.pickle", 'rb') as f:
     bic = pickle.load(f)
 
+
 def figsize(scale):
     fig_width_pt = 483.69687                         # Get this from LaTeX using \the\textwidth
     inches_per_pt = 1.0/72.27                       # Convert pt to inch
@@ -263,10 +264,33 @@ subplot(gs[1])
 ax = gca()
 ax.get_xaxis().tick_bottom()
 ax.get_yaxis().tick_left()
-n = len(bic['best'][:,1])
-plot(bic['best'][:,1]+np.random.uniform(-1,1,n), bic['best'][:,0]+np.random.uniform(-1,1,n), 'o', color = 'black', markersize = 1.5)
-yticks([2,5,8], [2,5,8], fontsize = 5)
-xticks([80,100,150,200], [80,100,150,200], fontsize = 5)
+
+depthvalue = np.unique(bic['best'][:,0])
+treesvalue = np.unique(bic['best'][:,1])
+tmp = []
+x = []
+y = []
+xt = []
+yt = []
+for i in depthvalue:
+    tmp.append([])
+    for j in treesvalue:
+        tmp[-1].append(len(np.where((bic['best'][:,0] == i)&(bic['best'][:,1] == j))[0]))
+        xt.append(i)
+        yt.append(j)
+        x.append(np.where(depthvalue == i)[0][0])
+        y.append(np.where(treesvalue == j)[0][0])
+tmp = np.array(tmp).flatten()
+x = np.array(x)
+y = np.array(y)
+
+scatter(y, x, marker = 'o', c = 'black', s = tmp*2.0)
+grid()
+xticks(np.arange(len(treesvalue)), treesvalue)
+yticks(np.arange(len(depthvalue)), depthvalue)
+# plot(bic['best'][:,1]+np.random.uniform(-1,1,n), bic['best'][:,0]+np.random.uniform(-1,1,n), 'o', color = 'black', markersize = 1.5)
+# yticks([2,4,8], [2,4,8], fontsize = 5)
+# xticks([40,100,150,200], [40,100,150,200], fontsize = 5)
 ylabel("Depth", fontsize = 6)
 xlabel("Num trees", fontsize = 6)
 
