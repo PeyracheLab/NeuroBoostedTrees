@@ -30,6 +30,7 @@ if not sys.argv[1:]:
    sys.exit(0)
 parser = OptionParser()
 parser.add_option("-n", "--neuron", action="store", help="The name of the target neuron", default=False)
+parser.add_option("-s", "--session", action="store", help="The name of the session", default=False)
 (options, args) = parser.parse_args()
 #######################################################################
 
@@ -98,20 +99,17 @@ def grid_search(features, targets):
                 
                 d = max_depth_step[j]
                 t = max_trees_step[k]
-                Yt_hat = xgb_run_param(X, y, d, t, n_cv=8, verbose=1)
-                
+                Yt_hat = xgb_run_param(X, y, d, t, n_cv=8, verbose=1)                
                 LogL = poisson_nloglik(y, Yt_hat)
-                bic = 2.0*LogL + np.log(float(y.shape[0]))*(d+t)
-                # print i,j,k
+                bic = 2.0*LogL + np.log(float(y.shape[0]))*(d+t)                
                 grid_results[i,j,k] = bic
-    
+                
     return grid_results
 
 #####################################################################
 # DATA LOADING
 #####################################################################
-adrien_data = scipy.io.loadmat(os.path.expanduser('~/data_test_boosted_tree.mat'))
-# adrien_data = scipy.io.loadmat(os.path.expanduser('~/Dropbox (Peyrache Lab)/Peyrache Lab Team Folder/Data/HDCellData/data_test_boosted_tree.mat'))
+adrien_data = scipy.io.loadmat(os.path.expanduser('~/XGBoost_session/'+options.session))
 
 grid = {}
 
@@ -159,7 +157,7 @@ grid[options.neuron] = grid_search(features, np.array([options.neuron]))[0]
     
 
     
-with open("/home/viejo/results_grid/grid_search_ang_"+options.neuron+".pickle", 'wb') as f:
+with open("/home/viejo/results_grid_sessions/grid_search_ang_"+options.session.split(".")[1]+"_"+options.neuron+".pickle", 'wb') as f:
     pickle.dump(grid, f)
 
 
