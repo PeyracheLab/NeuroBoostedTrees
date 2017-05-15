@@ -125,8 +125,8 @@ combination = {
 ########################################################################
 # LOADING CLUSTER RESULTS 
 ########################################################################
-# automatic fetching | transfer in ../data/results_pr2
-# os.system("scp -r viejo@guillimin.hpc.mcgill.ca:~/results_pr2_fig1/* ../data/results_pr2/")
+# # automatic fetching | transfer in ../data/results_pr2
+os.system("scp -r viejo@guillimin.hpc.mcgill.ca:~/results_pr2_fig1/* ../data/results_pr2/")
 methods = ['kernel', 'mb_60', 'xgb_run', 'lin_comb', 'kernel']
 final_data = {  'ADn':{k:{'PR2':[]} for k in methods},
                 'Pos':{k:{'PR2':[]} for k in methods} }                

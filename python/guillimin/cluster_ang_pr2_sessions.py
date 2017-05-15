@@ -90,9 +90,9 @@ def mb_60(Xr, Yr, Xt):
     index = np.digitize(Xr, bins).flatten()    
     tcurve = np.array([np.sum(Yr[index == i]) for i in xrange(1, nb_bins+1)])
     occupancy = np.array([np.sum(index == i) for i in xrange(1, nb_bins+1)])
-    tcurve = (tcurve/occupancy)*50.0  
+    tcurve = (tcurve/occupancy)*200.0  
     new_index = np.digitize(Xt, bins).flatten()    
-    return tcurve[new_index-1]/50.0 
+    return tcurve[new_index-1]/200.0 
 
 def poisson_pseudoR2(y, yhat, ynull):    
     yhat = yhat.reshape(y.shape)
