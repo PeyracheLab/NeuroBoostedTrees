@@ -88,11 +88,11 @@ def mb_60(Xr, Yr, Xt):
     nb_bins = 60
     bins = np.linspace(np.vstack((Xr, Xt)).min(), np.vstack((Xr, Xt)).max()+1e-8, nb_bins+1)
     index = np.digitize(Xr, bins).flatten()    
-    tcurve = np.array([np.mean(Yr[index == i]) for i in xrange(1, nb_bins+1)])
+    tcurve = np.array([np.sum(Yr[index == i]) for i in xrange(1, nb_bins+1)])
     occupancy = np.array([np.sum(index == i) for i in xrange(1, nb_bins+1)])
     tcurve = (tcurve/occupancy)*50.0  
     new_index = np.digitize(Xt, bins).flatten()    
-    return tcurve[new_index-1] 
+    return tcurve[new_index-1]/50.0 
 
 def poisson_pseudoR2(y, yhat, ynull):    
     yhat = yhat.reshape(y.shape)
@@ -159,7 +159,7 @@ def test_features(features, targets, learners = ['glm_pyglmnet', 'nn', 'xgb_run'
     for i in xrange(Y.shape[1]):
         y = Y[:,i]        
         for method in learners_:        
-            print('Running '+method+'...')                              
+            # print('Running '+method+'...')                              
             Yt_hat, PR2 = fit_cv(X, y, algorithm = method, n_cv=8, verbose=0)       
             Models[method]['Yt_hat'].append(Yt_hat)
             Models[method]['PR2'].append(PR2)           
@@ -172,8 +172,8 @@ def test_features(features, targets, learners = ['glm_pyglmnet', 'nn', 'xgb_run'
 #####################################################################
 # DATA LOADING
 #####################################################################
-adrien_data = scipy.io.loadmat(os.path.expanduser('../data/sessions/'+options.episode+'/'+options.session))
-
+# adrien_data = scipy.io.loadmat(os.path.expanduser('../data/sessions/'+options.episode+'/'+options.session))
+adrien_data = scipy.io.loadmat(os.path.expanduser('~/sessions/'+options.episode+'/'+options.session))
 #####################################################################
 # DATA ENGINEERING
 #####################################################################
@@ -209,7 +209,7 @@ combination = {
 # # MAIN LOOP
 # ########################################################################
 
-methods = ['kernel', 'mb_60', 'xgb_run', 'lin_comb', 'kernel']
+methods = ['mb_60', 'xgb_run', 'lin_comb', 'kernel']
 final_data = {}
 
 for k in np.sort(combination.keys()):

@@ -122,14 +122,34 @@ combination = {
 #     results = test_features(features, targets, methods)
     
 #     final_data[k] = results
+########################################################################
+# LOADING CLUSTER RESULTS 
+########################################################################
+# automatic fetching | transfer in ../data/results_pr2
+# os.system("scp -r viejo@guillimin.hpc.mcgill.ca:~/results_pr2_fig1/* ../data/results_pr2/")
+methods = ['kernel', 'mb_60', 'xgb_run', 'lin_comb', 'kernel']
+final_data = {  'ADn':{k:{'PR2':[]} for k in methods},
+                'Pos':{k:{'PR2':[]} for k in methods} }                
+for file in os.listdir("../data/results_pr2/wake/"):
+    print file
+    tmp = pickle.load(open("../data/results_pr2/wake/"+file, 'rb'))
+    for g in ['ADn', 'Pos']:
+        for m in methods:
+            final_data[g][m]['PR2'].append(tmp[g][m]['PR2'])
+for g in ['ADn', 'Pos']:
+    for m in methods:
+        final_data[g][m]['PR2'] = np.vstack(final_data[g][m]['PR2'])
+
+
+
 
 ########################################################################
 # PLOTTING
 ########################################################################
-with open("../data/fig1.pickle", 'rb') as f:
-    final_data = pickle.load(f)
+# with open("../data/fig1.pickle", 'rb') as f:
+#     final_data = pickle.load(f)
 
-thomas = pickle.load(open("../data/harmo_thomas.pickle", 'rb'))
+# thomas = pickle.load(open("../data/harmo_thomas.pickle", 'rb'))
 
 with open("../data/grid_search_ang_adn_pos.pickle", 'rb') as f:
     bic = pickle.load(f)
@@ -190,7 +210,7 @@ labels = {'mb_10':'MB \n 10 bins',
             'nn':'NN', 
             'xgb_run':"$\mathbf{XGB}$",
             'h1':"Linear \n (cos$\\theta$, sin$\\theta$)",
-            'h3':"$3^{rd}$ order \n kernel"}
+            'kernel':"$3^{rd}$ order \n kernel"}
 
 
 figure(figsize = figsize(1))
@@ -202,7 +222,7 @@ gs = gridspec.GridSpecFromSubplotSpec(1,1, subplot_spec = outer[0])
 subplot(gs[0])
 simpleaxis(gca())
 
-methods_to_plot = ['mb_60', 'xgb_run', 'lin_comb', 'h3']
+methods_to_plot = ['mb_60', 'xgb_run', 'lin_comb', 'kernel']
 labels_plot = [labels[m] for m in methods_to_plot]
 mean_pR2 = list()
 sem_pR2 = list()
