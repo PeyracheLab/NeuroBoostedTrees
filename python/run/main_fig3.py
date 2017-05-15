@@ -130,14 +130,14 @@ def test_features(features, targets, learners = ['glm_pyglmnet', 'nn', 'xgb_run'
 	Y = np.vstack(data[targets].values)
 	Models = {method:{'PR2':[],'Yt_hat':[]} for method in learners}
 	learners_ = list(learners)
-	print learners_
+	# print learners_
 
 	for i in xrange(Y.shape[1]):
 		y = Y[:,i]
 		# TODO : make sure that 'ens' is the last learner
 		for method in learners_:
-			print('Running '+method+'...')                              
-			Yt_hat, PR2 = fit_cv(X, y, algorithm = method, n_cv=8, verbose=1)       
+			# print('Running '+method+'...')                              
+			Yt_hat, PR2 = fit_cv(X, y, algorithm = method, n_cv=8, verbose=0)       
 			Models[method]['Yt_hat'].append(Yt_hat)
 			Models[method]['PR2'].append(PR2)           
 
@@ -244,6 +244,7 @@ for g in final_data.iterkeys():
 
 pickle.dump(final_data, open('../data/fig4.pickle', 'wb'))
 pickle.dump(bsts, open("../data/fig4_bsts.pickle", 'wb'))
+
 sys.exit()
 
 
