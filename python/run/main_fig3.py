@@ -14,40 +14,90 @@ import pandas as pd
 import scipy.io
 import numpy as np
 # Should not import fonctions if already using tensorflow for something else
-from fonctions import *
 import sys, os
 import itertools
 import cPickle as pickle
-import networkx as nx
-
-
-#####################################################################
-# DATA LOADING
-#####################################################################
-adrien_data = scipy.io.loadmat(os.path.expanduser('~/Dropbox (Peyrache Lab)/Peyrache Lab Team Folder/Data/HDCellData/data_test_boosted_tree.mat'))
-# m1_imported = scipy.io.loadmat('/home/guillaume/spykesML/data/m1_stevenson_2011.mat')
-
-#####################################################################
-# DATA ENGINEERING
-#####################################################################
-data 			= 	pd.DataFrame()
-data['time'] 	= 	np.arange(len(adrien_data['Ang']))		# TODO : import real time from matlab script
-data['ang'] 	= 	adrien_data['Ang'].flatten() 			# angular direction of the animal head
-data['x'] 		= 	adrien_data['X'].flatten() 				# x position of the animal 
-data['y'] 		= 	adrien_data['Y'].flatten() 				# y position of the animal
-data['vel'] 	= 	adrien_data['speed'].flatten() 			# velocity of the animal 
-# Engineering features
-data['cos']		= 	np.cos(adrien_data['Ang'].flatten())	# cosinus of angular direction
-data['sin']		= 	np.sin(adrien_data['Ang'].flatten())	# sinus of angular direction
-# Firing data
-for i in xrange(adrien_data['Pos'].shape[1]): data['Pos'+'.'+str(i)] = adrien_data['Pos'][:,i]
-for i in xrange(adrien_data['ADn'].shape[1]): data['ADn'+'.'+str(i)] = adrien_data['ADn'][:,i]
-
-
+from sklearn.model_selection import KFold
+import xgboost as xgb
 
 #######################################################################
 # FONCTIONS DEFINITIONS
 #######################################################################
+def xgb_run(Xr, Yr, Xt):
+    # params = {'objective': "count:poisson", #for poisson output
+    # 'eval_metric': "logloss", #loglikelihood loss
+    # 'seed': 2925, #for reproducibility
+    # 'silent': 1,
+    # 'learning_rate': 0.05,
+    # 'min_child_weight': 2, 'n_estimators': 580,
+    # 'subsample': 0.6, 'max_depth': 5, 'gamma': 0.4}        
+    params = {'objective': "count:poisson", #for poisson output
+    'eval_metric': "poisson-nloglik", #loglikelihood loss
+    'seed': 2925, #for reproducibility
+    'silent': 1,
+    'learning_rate': 0.05,
+    'min_child_weight': 2, 'n_estimators': 250,
+    'subsample': 0.6, 'max_depth': 40, 'gamma': 0.0}
+    dtrain = xgb.DMatrix(Xr, label=Yr)
+    dtest = xgb.DMatrix(Xt)
+    num_round = 250
+    bst = xgb.train(params, dtrain, num_round)
+    Yt = bst.predict(dtest)
+    return Yt
+
+def poisson_pseudoR2(y, yhat, ynull):    
+    yhat = yhat.reshape(y.shape)
+    eps = np.spacing(1)
+    L1 = np.sum(y*np.log(eps+yhat) - yhat)
+    L1_v = y*np.log(eps+yhat) - yhat
+    L0 = np.sum(y*np.log(eps+ynull) - ynull)
+    LS = np.sum(y*np.log(eps+y) - y)
+    R2 = 1-(LS-L1)/(LS-L0)
+    return R2
+
+def fit_cv(X, Y, algorithm, n_cv=10, verbose=1):
+    """Performs cross-validated fitting. Returns (Y_hat, pR2_cv); a vector of predictions Y_hat with the
+    same dimensions as Y, and a list of pR2 scores on each fold pR2_cv.
+    
+    X  = input data
+    Y = spiking data
+    algorithm = a function of (Xr, Yr, Xt) {training data Xr and response Yr and testing features Xt}
+                and returns the predicted response Yt
+    n_cv = number of cross-validations folds
+    
+    """
+    if np.ndim(X)==1:
+        X = np.transpose(np.atleast_2d(X))
+
+    cv_kf = KFold(n_splits=n_cv, shuffle=True, random_state=42)
+    skf  = cv_kf.split(X)
+
+    i=1
+    Y_hat=np.zeros(len(Y))
+    pR2_cv = list()
+    
+
+    for idx_r, idx_t in skf:
+        if verbose > 1:
+            print( '...runnning cv-fold', i, 'of', n_cv)
+        i+=1
+        Xr = X[idx_r, :]
+        Yr = Y[idx_r]
+        Xt = X[idx_t, :]
+        Yt = Y[idx_t]           
+        Yt_hat = eval(algorithm)(Xr, Yr, Xt)        
+        Y_hat[idx_t] = Yt_hat
+        pR2 = poisson_pseudoR2(Yt, Yt_hat, np.mean(Yr))
+        pR2_cv.append(pR2)
+        if verbose > 1:
+            print( 'pR2: ', pR2)
+
+    if verbose > 0:
+        print("pR2_cv: %0.6f (+/- %0.6f)" % (np.mean(pR2_cv),
+                                             np.std(pR2_cv)/np.sqrt(n_cv)))
+
+    return Y_hat, pR2_cv
+
 def extract_tree_threshold(trees):
 	n = len(trees.get_dump())
 	thr = {}
@@ -66,50 +116,30 @@ def extract_tree_threshold(trees):
 		thr[k] = np.sort(np.array(thr[k]))
 	return thr
 
-def tuning_curve(x, f, nb_bins):	
-	bins = np.linspace(x.min(), x.max()+1e-8, nb_bins+1)
-	index = np.digitize(x, bins).flatten()    
-	tcurve = np.array([np.mean(f[index == i]) for i in xrange(1, nb_bins+1)])  	
-	x = bins[0:-1] + (bins[1]-bins[0])/2.
-	return (x, tcurve)
+def tuning_curve(x, f, nb_bins):    
+    bins = np.linspace(x.min(), x.max()+1e-8, nb_bins+1)
+    index = np.digitize(x, bins).flatten()    
+    tcurve = np.array([np.sum(f[index == i]) for i in xrange(1, nb_bins+1)])    
+    occupancy = np.array([np.sum(index == i) for i in xrange(1, nb_bins+1)])
+    tcurve = (tcurve/occupancy)*200.0
+    x = bins[0:-1] + (bins[1]-bins[0])/2.    
+    return (x, tcurve)
 
-def test_features(features, targets, learners = ['glm_pyglmnet', 'nn', 'xgb_run', 'ens']):
-	'''
-		Main function of the script
-		Return : dictionnary with for each models the score PR2 and Yt_hat
-	'''
+def test_features(features, targets, learners = ['glm_pyglmnet', 'nn', 'xgb_run', 'ens']):	
 	X = data[features].values
 	Y = np.vstack(data[targets].values)
 	Models = {method:{'PR2':[],'Yt_hat':[]} for method in learners}
 	learners_ = list(learners)
 	print learners_
 
-	# Special case for glm_pyglmnet to go parallel
-	if 'glm_pyglmnet' in learners:
-		print('Running glm_pyglmnet...')                
-		# # Map the targets for 6 cores by splitting Y in 6 parts
-		pool = multiprocessing.Pool(processes = 6)
-		value = pool.map(glm_parallel, itertools.izip(range(6), itertools.repeat(X), itertools.repeat(Y)))
-		Models['glm_pyglmnet']['Yt_hat'] = np.vstack([value[i]['Yt_hat'] for i in xrange(6)]).transpose()
-		Models['glm_pyglmnet']['PR2'] = np.vstack([value[i]['PR2'] for i in xrange(6)])     
-		learners_.remove('glm_pyglmnet')        
-
 	for i in xrange(Y.shape[1]):
 		y = Y[:,i]
 		# TODO : make sure that 'ens' is the last learner
 		for method in learners_:
-			if method != 'ens': # FIRST STAGE LEARNING          
-				print('Running '+method+'...')                              
-				Yt_hat, PR2 = fit_cv(X, y, algorithm = method, n_cv=8, verbose=1)       
-				Models[method]['Yt_hat'].append(Yt_hat)
-				Models[method]['PR2'].append(PR2)           
-
-			elif method == 'ens': # SECOND STAGE LEARNING
-				X_ens = np.transpose(np.array([Models[m]['Yt_hat'][i] for m in learners if m != method]))
-				#We can use XGBoost as the 2nd-stage model
-				Yt_hat, PR2 = fit_cv(X_ens, y, algorithm = 'xgb_run', n_cv=8, verbose=1)        
-				Models['ens']['Yt_hat'].append(Yt_hat)      
-				Models['ens']['PR2'].append(PR2)                        
+			print('Running '+method+'...')                              
+			Yt_hat, PR2 = fit_cv(X, y, algorithm = method, n_cv=2, verbose=1)       
+			Models[method]['Yt_hat'].append(Yt_hat)
+			Models[method]['PR2'].append(PR2)           
 
 	for m in Models.iterkeys():
 		Models[m]['Yt_hat'] = np.array(Models[m]['Yt_hat'])
@@ -117,38 +147,71 @@ def test_features(features, targets, learners = ['glm_pyglmnet', 'nn', 'xgb_run'
 		
 	return Models
 
+#####################################################################
+# DATA LOADING | ALL SESSIONS WAKE
+#####################################################################
+
+final_data = {g:{
+	k:[] for k in ['peer', 'cros']
+} for g in ['ADn', 'Pos']}
+
+for file in os.listdir("../data/sessions/wake/"):	
+	adrien_data = scipy.io.loadmat("../data/sessions/wake/"+file)
+	session = file.split(".")[1]
+	adn = adrien_data['ADn'].shape[1]
+	pos = adrien_data['Pos'].shape[1]
+	
+	if adn >= 7 and pos >= 7:	
+#####################################################################
+# DATA ENGINEERING
+#####################################################################
+		data 			= 	pd.DataFrame()
+		data['time'] 	= 	np.arange(len(adrien_data['Ang']))		# TODO : import real time from matlab script
+		data['ang'] 	= 	adrien_data['Ang'].flatten() 			# angular direction of the animal head
+		data['x'] 		= 	adrien_data['X'].flatten() 				# x position of the animal 
+		data['y'] 		= 	adrien_data['Y'].flatten() 				# y position of the animal
+		data['vel'] 	= 	adrien_data['speed'].flatten() 			# velocity of the animal 
+		# Engineering features
+		data['cos']		= 	np.cos(adrien_data['Ang'].flatten())	# cosinus of angular direction
+		data['sin']		= 	np.sin(adrien_data['Ang'].flatten())	# sinus of angular direction
+		# Firing data
+		for i in xrange(adrien_data['Pos'].shape[1]): data['Pos'+'.'+str(i)] = adrien_data['Pos'][:,i]
+		for i in xrange(adrien_data['ADn'].shape[1]): data['ADn'+'.'+str(i)] = adrien_data['ADn'][:,i]
 
 #####################################################################
 # COMBINATIONS DEFINITION
 #####################################################################
-combination = {}
-targets = [i for i in list(data) if i.split(".")[0] in ['Pos', 'ADn']]
+		combination = {}
+		targets = [i for i in list(data) if i.split(".")[0] in ['Pos', 'ADn']]
 
-for n in ['Pos', 'ADn']:			
-	combination[n] = {'peer':{},'cros':{}}	
-	sub = [i for i in list(data) if i.split(".")[0] == n]
-	for k in sub:
-		combination[n]['peer'][k] = {	'features'	: [i for i in sub if i != k],
-										'targets'	: k
-									}
-		combination[n]['cros'][k] = { 	'features'	: [i for i in targets if i.split(".")[0] != k.split(".")[0]],
-										'targets'	: k
-									}
+		for n in ['Pos', 'ADn']:			
+			combination[n] = {'peer':{},'cros':{}}	
+			sub = [i for i in list(data) if i.split(".")[0] == n]
+			for k in sub:
+				combination[n]['peer'][k] = {	'features'	: [i for i in sub if i != k],
+												'targets'	: k
+											}
+				combination[n]['cros'][k] = { 	'features'	: [i for i in targets if i.split(".")[0] != k.split(".")[0]],
+												'targets'	: k
+											}		
 
 ########################################################################
 # MAIN LOOP FOR R2
 ########################################################################
-# methods = ['xgb_run', 'lin_comb']
+ 		methods = ['xgb_run']
 # final_data = {}
-# for g in combination.iterkeys():
-# 	final_data[g] = {}
-# 	for w in combination[g].iterkeys():
-# 		final_data[g][w] = {}
-# 		for k in combination[g][w].iterkeys():
-# 		    features = combination[g][w][k]['features']
-# 		    targets =  combination[g][w][k]['targets'] 
-# 		    results = test_features(features, targets, methods)
-# 		    final_data[g][w][k] = results
+		for g in combination.iterkeys():
+			final_data[g] = {}
+			for w in combination[g].iterkeys():
+				final_data[g][w] = {}
+				for k in combination[g][w].iterkeys():
+				    features = combination[g][w][k]['features']
+				    targets =  combination[g][w][k]['targets'] 
+				    results = test_features(features, targets, methods)
+				    tmp = results
+
+				    sys.exit()
+				    # final_data[g][w][k] = results
 
 # with open("../data/fig4.pickle", 'wb') as f:
 #   pickle.dump(final_data, f)
@@ -432,5 +495,5 @@ for g in plotsplitvar.keys():
 		
 		count += 1
 
-savefig("../../figures/fig4.pdf", dpi=900, bbox_inches = 'tight', facecolor = 'white')
-os.system("evince ../../figures/fig4.pdf &")
+savefig("../../figures/fig3.pdf", dpi=900, bbox_inches = 'tight', facecolor = 'white')
+os.system("evince ../../figures/fig3.pdf &")

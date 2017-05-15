@@ -144,47 +144,123 @@ combination = {
             }
 }
 
-# ########################################################################
-# # MAIN LOOP
-# ########################################################################
-grid = {'ADn':[], 'Pos':[]}
-for g in combination.iterkeys():
-    for n in combination[g]['targets']:
-        grid[g].append(pickle.load(open("../data/results_grid/grid_search_ang_"+n+".pickle", 'rb'))[n])
-    grid[g] = np.array(grid[g])
+# # ########################################################################
+# # # MAIN LOOP
+# # ########################################################################
+# grid = {'ADn':[], 'Pos':[]}
+# for g in combination.iterkeys():
+#     for n in combination[g]['targets']:
+#         grid[g].append(pickle.load(open("../data/results_grid/grid_search_ang_"+n+".pickle", 'rb'))[n])
+#     grid[g] = np.array(grid[g])
     
+
+# max_depth_step = 2**np.arange(1,11)
+# max_trees_step = np.array([5,20,40,80,100,150,200,250,300,350,400,500])
+
+# dt = (np.vstack(max_depth_step)*max_trees_step).astype('float')
+# penalty = np.log(22863.0)*dt
+# dtnew = (np.vstack(max_depth_step)+max_trees_step).astype('float')
+# newpenalty = np.log(22863.0)*dtnew
+
+# allbic = {} 
+# best = []
+# for g in grid.iterkeys():
+#     bic = grid[g]
+#     log = bic - penalty
+#     bic = log + newpenalty
+
+#     for i in xrange(len(bic)):
+#         d, t = np.where(bic[i] == bic[i].min())
+#         best.append([max_depth_step[d[0]], max_trees_step[t[0]]])
+
+#     log_ = log.mean(0)
+#     bic_ = bic.mean(0)
+#     allbic[g] = bic_
+
+# best= np.array(best)
+# allbic['best'] = best
+
+# with open("../data/grid_search_ang_adn_pos.pickle", 'wb') as f:
+#     pickle.dump(allbic, f)
+
+########################################################################
+# ALL SESSIONS
+########################################################################
+# # automatic fetching | transfer in ../data/results_pr2
+# os.system("scp -r viejo@guillimin.hpc.mcgill.ca:~/results_grid_sessions/* ../data/results_grid_sessions/")
+bic = {}
+for file in os.listdir("../data/results_grid_sessions/"):
+    print file
+    tmp = pickle.load(open("../data/results_grid_sessions/"+file, 'rb'))
+    bic[file.split("_")[-2]+"."+tmp.keys()[0]] = tmp[tmp.keys()[0]]
 
 max_depth_step = 2**np.arange(1,11)
 max_trees_step = np.array([5,20,40,80,100,150,200,250,300,350,400,500])
-
-dt = (np.vstack(max_depth_step)*max_trees_step).astype('float')
-penalty = np.log(22863.0)*dt
-dtnew = (np.vstack(max_depth_step)+max_trees_step).astype('float')
-newpenalty = np.log(22863.0)*dtnew
-
-allbic = {} 
 best = []
-for g in grid.iterkeys():
-    bic = grid[g]
-    log = bic - penalty
-    bic = log + newpenalty
+for k in bic.iterkeys():
+    d, t = np.where(bic[k] == bic[k].min())
+    best.append([max_depth_step[d[0]], max_trees_step[t[0]]])
 
-    for i in xrange(len(bic)):
-        d, t = np.where(bic[i] == bic[i].min())
-        best.append([max_depth_step[d[0]], max_trees_step[t[0]]])
+best = np.array(best)
 
-    log_ = log.mean(0)
-    bic_ = bic.mean(0)
-    allbic[g] = bic_
-
-best= np.array(best)
-allbic['best'] = best
+bic['best'] = best
 
 with open("../data/grid_search_ang_adn_pos.pickle", 'wb') as f:
-    pickle.dump(allbic, f)
+    pickle.dump(bic, f)
+
+
+sys.exit()
+
+# session size
+ssize = {}
+for f in os.listdir("../data/sessions/wake/"):
+    adrien_data = scipy.io.loadmat(os.path.expanduser('../data/sessions/wake/'+f))
+    ssize[f.split(".")[1]] = len(adrien_data['Ang'])
+
+llog = {}
+newbic = {}
+for k in bic.keys():
+    if k != 'best':
+        dt = (np.vstack(max_depth_step)+max_trees_step).astype('float')
+        penalty = np.log(float(ssize[k.split(".")[0]]))*dt
+        llog[k] = bic[k] - penalty
+        newbic[k] = llog[k] + np.log(float(ssize[k.split(".")[0]]))*(np.vstack(max_depth_step)*max_trees_step).astype('float')
+
+from pylab import *
+figure()
+for i in xrange(25):
+    subplot(5,5,i+1)
+    imshow(newbic[newbic.keys()[i]], origin = 'lower', interpolation = 'nearest', aspect = 'auto')
+    yticks(np.arange(len(max_depth_step)), max_depth_step)
+    xticks(np.arange(len(max_trees_step)), max_trees_step)
+
+show()
+
+# penalty = np.log(22863.0)*dt
+# dtnew = (np.vstack(max_depth_step)+max_trees_step).astype('float')
+# newpenalty = np.log(22863.0)*dtnew
+
+# allbic = {} 
+# best = []
+# for g in grid.iterkeys():
+#     bic = grid[g]
+#     log = bic - penalty
+#     bic = log + newpenalty
+
+#     for i in xrange(len(bic)):
+#         d, t = np.where(bic[i] == bic[i].min())
+#         best.append([max_depth_step[d[0]], max_trees_step[t[0]]])
+
+#     log_ = log.mean(0)
+#     bic_ = bic.mean(0)
+#     allbic[g] = bic_
+
 
 from matplotlib import *
 from pylab import *
+
+
+figure()
 
 imshow(allbic['Pos'], origin = 'lower', interpolation = 'nearest', aspect = 'auto')
 yticks(np.arange(len(max_depth_step)), max_depth_step)

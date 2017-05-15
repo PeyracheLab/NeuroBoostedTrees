@@ -20,31 +20,6 @@ import sys, os
 import itertools
 import cPickle as pickle
 
-
-#####################################################################
-# DATA LOADING
-#####################################################################
-adrien_data = scipy.io.loadmat(os.path.expanduser('~/Dropbox (Peyrache Lab)/Peyrache Lab Team Folder/Data/HDCellData/data_test_boosted_tree_20ms.mat'))
-# m1_imported = scipy.io.loadmat('/home/guillaume/spykesML/data/m1_stevenson_2011.mat')
-
-#####################################################################
-# DATA ENGINEERING
-#####################################################################
-data 			= 	pd.DataFrame()
-data['time'] 	= 	np.arange(len(adrien_data['Ang']))		# TODO : import real time from matlab script
-data['ang'] 	= 	adrien_data['Ang'].flatten() 			# angular direction of the animal head
-data['x'] 		= 	adrien_data['X'].flatten() 				# x position of the animal 
-data['y'] 		= 	adrien_data['Y'].flatten() 				# y position of the animal
-data['vel'] 	= 	adrien_data['speed'].flatten() 			# velocity of the animal 
-# Engineering features
-data['cos']		= 	np.cos(adrien_data['Ang'].flatten())	# cosinus of angular direction
-data['sin']		= 	np.sin(adrien_data['Ang'].flatten())	# sinus of angular direction
-# Firing data
-for i in xrange(adrien_data['Pos'].shape[1]): data['Pos'+'.'+str(i)] = adrien_data['Pos'][:,i]
-for i in xrange(adrien_data['ADn'].shape[1]): data['ADn'+'.'+str(i)] = adrien_data['ADn'][:,i]
-
-
-
 #######################################################################
 # FONCTIONS DEFINITIONS
 #######################################################################
@@ -66,80 +41,106 @@ def extract_tree_threshold(trees):
 		thr[k] = np.sort(np.array(thr[k]))
 	return thr
 
-def tuning_curve(x, f, nb_bins, tau = 50.0):	
-	bins = np.linspace(x.min(), x.max()+1e-8, nb_bins+1)
-	index = np.digitize(x, bins).flatten()    
-	tcurve = np.array([np.sum(f[index == i]) for i in xrange(1, nb_bins+1)])  	
-	occupancy = np.array([np.sum(index == i) for i in xrange(1, nb_bins+1)])
-	tcurve = (tcurve/occupancy)*tau
-	x = bins[0:-1] + (bins[1]-bins[0])/2.
-	# tcurve = tcurve
-	return (x, tcurve)
+def tuning_curve(x, f, nb_bins):    
+    bins = np.linspace(x.min(), x.max()+1e-8, nb_bins+1)
+    index = np.digitize(x, bins).flatten()    
+    tcurve = np.array([np.sum(f[index == i]) for i in xrange(1, nb_bins+1)])    
+    occupancy = np.array([np.sum(index == i) for i in xrange(1, nb_bins+1)])
+    tcurve = (tcurve/occupancy)*200.0
+    x = bins[0:-1] + (bins[1]-bins[0])/2.    
+    return (x, tcurve)
+
+#####################################################################
+# DATA LOADING | ALL SESSIONS WAKE
+#####################################################################
+#TO SAVE
+tuningc = {}
+bsts = {i:{} for i in ['1.Pos','1.ADn','2.Pos','2.ADn','3.Pos','3.ADn']} # to keep the boosted tree
+
+# adrien_data = scipy.io.loadmat(os.path.expanduser('~/Dropbox (Peyrache Lab)/Peyrache Lab Team Folder/Data/HDCellData/data_test_boosted_tree_20ms.mat'))
+# m1_imported = scipy.io.loadmat('/home/guillaume/spykesML/data/m1_stevenson_2011.mat')
+for file in os.listdir("../data/sessions/wake/"):
+	print file
+	adrien_data = scipy.io.loadmat("../data/sessions/wake/"+file)
+	session = file.split(".")[1]
+
+#####################################################################
+# DATA ENGINEERING
+#####################################################################
+	data 			= 	pd.DataFrame()
+	data['time'] 	= 	np.arange(len(adrien_data['Ang']))		# TODO : import real time from matlab script
+	data['ang'] 	= 	adrien_data['Ang'].flatten() 			# angular direction of the animal head
+	data['x'] 		= 	adrien_data['X'].flatten() 				# x position of the animal 
+	data['y'] 		= 	adrien_data['Y'].flatten() 				# y position of the animal
+	data['vel'] 	= 	adrien_data['speed'].flatten() 			# velocity of the animal 
+	# Engineering features
+	data['cos']		= 	np.cos(adrien_data['Ang'].flatten())	# cosinus of angular direction
+	data['sin']		= 	np.sin(adrien_data['Ang'].flatten())	# sinus of angular direction
+	# Firing data
+	for i in xrange(adrien_data['Pos'].shape[1]): data['Pos'+'.'+str(i)] = adrien_data['Pos'][:,i]
+	for i in xrange(adrien_data['ADn'].shape[1]): data['ADn'+'.'+str(i)] = adrien_data['ADn'][:,i]
 
 #####################################################################
 # COMBINATIONS DEFINITION
 #####################################################################
-combination = {
-	'1.ADn':	{
-			'features' 	:	['ang'],
-			'targets'	:	[i for i in list(data) if i.split(".")[0] == 'ADn']
-		},
-	'1.Pos':	{
-			'features' 	:	['ang'],
-			'targets'	:	[i for i in list(data) if i.split(".")[0] == 'Pos']
-		},		
-	'2.ADn':	{
-			'features' 	:	['x', 'y', 'ang'],
-			'targets'	:	[i for i in list(data) if i.split(".")[0] == 'ADn']
-		},
-	'2.Pos':	{
-			'features' 	:	['x', 'y', 'ang'],
-			'targets'	:	[i for i in list(data) if i.split(".")[0] == 'Pos']
-		},	
-	'3.ADn':	{
-			'features' 	:	['x', 'y'],
-			'targets'	:	[i for i in list(data) if i.split(".")[0] == 'ADn']
-		},
-	'3.Pos':	{
-			'features' 	:	['x', 'y'],
-			'targets'	:	[i for i in list(data) if i.split(".")[0] == 'Pos']
+	combination = {
+		'1.ADn':	{
+				'features' 	:	['ang'],
+				'targets'	:	[i for i in list(data) if i.split(".")[0] == 'ADn']
+			},
+		'1.Pos':	{
+				'features' 	:	['ang'],
+				'targets'	:	[i for i in list(data) if i.split(".")[0] == 'Pos']
+			},		
+		'2.ADn':	{
+				'features' 	:	['x', 'y', 'ang'],
+				'targets'	:	[i for i in list(data) if i.split(".")[0] == 'ADn']
+			},
+		'2.Pos':	{
+				'features' 	:	['x', 'y', 'ang'],
+				'targets'	:	[i for i in list(data) if i.split(".")[0] == 'Pos']
+			},	
+		'3.ADn':	{
+				'features' 	:	['x', 'y'],
+				'targets'	:	[i for i in list(data) if i.split(".")[0] == 'ADn']
+			},
+		'3.Pos':	{
+				'features' 	:	['x', 'y'],
+				'targets'	:	[i for i in list(data) if i.split(".")[0] == 'Pos']
+			}
 		}
-	}
-
 
 #####################################################################
 # LEARNING XGB
-#####################################################################
+#####################################################################	
+	params = {'objective': "count:poisson", #for poisson output
+	    'eval_metric': "poisson-nloglik", #loglikelihood loss
+	    'seed': 2925, #for reproducibility
+	    'silent': 1,
+	    'learning_rate': 0.05,
+	    'min_child_weight': 2, 'n_estimators': 250,
+	    'subsample': 0.6, 'max_depth': 25, 'gamma': 0.0}        
+	num_round = 250
 
-bsts = {i:{} for i in combination.iterkeys()} # to keep the boosted tree
-params = {'objective': "count:poisson", #for poisson output
-    'eval_metric': "logloss", #loglikelihood loss
-    'seed': 2925, #for reproducibility
-    'silent': 1,
-    'learning_rate': 0.05,
-    'min_child_weight': 2, 'n_estimators': 150,
-    'subsample': 0.6, 'max_depth': 4, 'gamma': 0.0}        
-num_round = 150
-
-for k in combination.keys():
-	features = combination[k]['features']
-	targets = combination[k]['targets']	
-	X = data[features].values
-	Yall = data[targets].values	
-	for i in xrange(Yall.shape[1]):
-		dtrain = xgb.DMatrix(X, label=Yall[:,i])
-		bst = xgb.train(params, dtrain, num_round)
-		bsts[k][targets[i]] = bst
+	for k in combination.keys():
+		features = combination[k]['features']
+		targets = combination[k]['targets']	
+		X = data[features].values
+		Yall = data[targets].values	
+		for i in xrange(Yall.shape[1]):
+			print k, session+"."+targets[i]
+			dtrain = xgb.DMatrix(X, label=Yall[:,i])
+			bst = xgb.train(params, dtrain, num_round)
+			bsts[k][session+"."+targets[i]] = bst
 
 #####################################################################
 # TUNING CURVE
 #####################################################################
-X = data['ang'].values
-tuningc = {}
-alln = [i for i in list(data) if i.split(".")[0] in ['Pos', 'ADn']]
-for t in alln:
-	Y = data[t].values
-	tuningc[t] = tuning_curve(X, Y, nb_bins = 60)
+	X = data['ang'].values
+	alln = [i for i in list(data) if i.split(".")[0] in ['Pos', 'ADn']]
+	for t in alln:
+		Y = data[t].values
+		tuningc[session+"."+t] = tuning_curve(X, Y, nb_bins = 60)
 
 
 #####################################################################
@@ -231,6 +232,7 @@ for g in ['2.Pos', '2.ADn']:
 			])
 		ratio[g.split('.')[1]][k] = ratio[g.split('.')[1]][k]/float(np.sum(ratio[g.split('.')[1]][k]))
 
+sys.exit()
 
 all_data = {}
 all_data['angdens'] = angdens
@@ -239,7 +241,7 @@ all_data['ratio'] = ratio
 all_data['twod_xydens'] = twod_xydens
 pickle.dump(all_data, open("../data/fig2_density.pickle", 'wb'))
 
-sys.exit()
+
 
 #####################################################################
 # PLOTTING
