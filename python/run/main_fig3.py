@@ -137,7 +137,7 @@ def test_features(features, targets, learners = ['glm_pyglmnet', 'nn', 'xgb_run'
 		# TODO : make sure that 'ens' is the last learner
 		for method in learners_:
 			print('Running '+method+'...')                              
-			Yt_hat, PR2 = fit_cv(X, y, algorithm = method, n_cv=2, verbose=1)       
+			Yt_hat, PR2 = fit_cv(X, y, algorithm = method, n_cv=8, verbose=1)       
 			Models[method]['Yt_hat'].append(Yt_hat)
 			Models[method]['PR2'].append(PR2)           
 
@@ -152,8 +152,10 @@ def test_features(features, targets, learners = ['glm_pyglmnet', 'nn', 'xgb_run'
 #####################################################################
 
 final_data = {g:{
-	k:[] for k in ['peer', 'cros']
+	k:{'PR2':[], 'Yt_hat':[]} for k in ['peer', 'cros']
 } for g in ['ADn', 'Pos']}
+
+bsts = {g:{k:{} for k in ['peer', 'cros']} for g in ['ADn', 'Pos']}
 
 for file in os.listdir("../data/sessions/wake/"):	
 	adrien_data = scipy.io.loadmat("../data/sessions/wake/"+file)
@@ -199,52 +201,51 @@ for file in os.listdir("../data/sessions/wake/"):
 # MAIN LOOP FOR R2
 ########################################################################
  		methods = ['xgb_run']
-# final_data = {}
-		for g in combination.iterkeys():
-			final_data[g] = {}
-			for w in combination[g].iterkeys():
-				final_data[g][w] = {}
+		for g in combination.iterkeys():			
+			for w in combination[g].iterkeys():				
 				for k in combination[g][w].iterkeys():
 				    features = combination[g][w][k]['features']
 				    targets =  combination[g][w][k]['targets'] 
 				    results = test_features(features, targets, methods)
-				    tmp = results
-
-				    sys.exit()
-				    # final_data[g][w][k] = results
-
-# with open("../data/fig4.pickle", 'wb') as f:
-#   pickle.dump(final_data, f)
-
-with open("../data/fig4.pickle", 'rb') as f:
-	final_data = pickle.load(f)
+				    				    
+				    final_data[g][w]['PR2'].append(results['xgb_run']['PR2'][0])
+				    final_data[g][w]['Yt_hat'].append(results['xgb_run']['Yt_hat'][0])
 
 #####################################################################
 # LEARNING XGB
-#####################################################################
+#####################################################################		
+		params = {'objective': "count:poisson", #for poisson output
+			'eval_metric': "logloss", #loglikelihood loss
+			'seed': 2925, #for reproducibility
+			'silent': 1,
+			'learning_rate': 0.05,
+			'min_child_weight': 2, 'n_estimators': 250,
+			'subsample': 0.6, 'max_depth': 40, 'gamma': 0.4}    
+		num_round = 250
 
-# bsts = {}
-# params = {'objective': "count:poisson", #for poisson output
-# 	'eval_metric': "logloss", #loglikelihood loss
-# 	'seed': 2925, #for reproducibility
-# 	'silent': 1,
-# 	'learning_rate': 0.05,
-# 	'min_child_weight': 2, 'n_estimators': 580,
-# 	'subsample': 0.6, 'max_depth': 400, 'gamma': 0.4}    
-# num_round = 400
+		for g in combination.iterkeys():			
+			for w in combination[g].iterkeys():				
+				for k in combination[g][w].iterkeys():
+					features = combination[g][w][k]['features']
+					targets =  combination[g][w][k]['targets']	
+					X = data[features].values
+					Yall = data[targets].values		
+					dtrain = xgb.DMatrix(X, label=Yall)
+					bst = xgb.train(params, dtrain, num_round)
+					bsts[g][w][file.split(".")[1]+"."+k] = bst
 
-# for g in combination.iterkeys():
-# 	bsts[g] = {}
-# 	for w in combination[g].iterkeys():
-# 		bsts[g][w] = {}
-# 		for k in combination[g][w].iterkeys():
-# 			features = combination[g][w][k]['features']
-# 			targets =  combination[g][w][k]['targets']	
-# 			X = data[features].values
-# 			Yall = data[targets].values		
-# 			dtrain = xgb.DMatrix(X, label=Yall)
-# 			bst = xgb.train(params, dtrain, num_round)
-# 			bsts[g][w][k] = bst
+
+
+for g in final_data.iterkeys():
+	for w in final_data[g].iterkeys():
+		for s in final_data[g][w].iterkeys():
+			final_data[g][w][s] = np.array(final_data[g][w][s])
+
+sys.exit()
+
+# with open("../data/fig4.pickle", 'rb') as f:
+# 	final_data = pickle.load(f)
+
 
 with open("../data/fig4_bsts.pickle", 'rb') as f:
 	bsts = pickle.load(f)
