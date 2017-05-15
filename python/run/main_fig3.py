@@ -241,11 +241,15 @@ for g in final_data.iterkeys():
 		for s in final_data[g][w].iterkeys():
 			final_data[g][w][s] = np.array(final_data[g][w][s])
 
+
+pickle.dump(final_data, open('../data/fig4.pickle', 'wb'))
+pickle.dump(bsts, open("../data/fig4_bsts.pickle", 'wb'))
 sys.exit()
 
-# with open("../data/fig4.pickle", 'rb') as f:
-# 	final_data = pickle.load(f)
 
+
+with open("../data/fig4.pickle", 'rb') as f:
+	final_data = pickle.load(f)
 
 with open("../data/fig4_bsts.pickle", 'rb') as f:
 	bsts = pickle.load(f)
