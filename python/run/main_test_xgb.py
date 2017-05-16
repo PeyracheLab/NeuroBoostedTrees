@@ -24,7 +24,9 @@ import cPickle as pickle
 #####################################################################
 # DATA LOADING
 #####################################################################
-adrien_data = scipy.io.loadmat(os.path.expanduser('~/Dropbox (Peyrache Lab)/Peyrache Lab Team Folder/Data/HDCellData/data_test_boosted_tree.mat'))
+# adrien_data = scipy.io.loadmat(os.path.expanduser('~/Dropbox (Peyrache Lab)/Peyrache Lab Team Folder/Data/HDCellData/data_test_boosted_tree.mat'))
+adrien_data = scipy.io.loadmat(os.path.expanduser('../data/sessions/wake/boosted_tree.Mouse25-140124.mat'))
+
 # m1_imported = scipy.io.loadmat('/home/guillaume/spykesML/data/m1_stevenson_2011.mat')
 
 #####################################################################
@@ -42,7 +44,6 @@ data['sin']		= 	np.sin(adrien_data['Ang'].flatten())	# sinus of angular directio
 # Firing data
 for i in xrange(adrien_data['Pos'].shape[1]): data['Pos'+'.'+str(i)] = adrien_data['Pos'][:,i]
 for i in xrange(adrien_data['ADn'].shape[1]): data['ADn'+'.'+str(i)] = adrien_data['ADn'][:,i]
-
 
 
 #######################################################################
@@ -73,35 +74,36 @@ def tuning_curve(x, f, nb_bins):
 	x = bins[0:-1] + (bins[1]-bins[0])/2.
 	return (x, tcurve)
 
+def test_features(features, targets, learners = ['glm_pyglmnet', 'nn', 'xgb_run', 'ens']):	
+	X = data[features].values
+	Y = np.vstack(data[targets].values)
+	Models = {method:{'PR2':[],'Yt_hat':[]} for method in learners}
+	learners_ = list(learners)
+	# print learners_
+
+	for i in xrange(Y.shape[1]):
+		y = Y[:,i]
+		# TODO : make sure that 'ens' is the last learner
+		for method in learners_:
+			print('Running '+method+'...')                              
+			Yt_hat, PR2 = fit_cv(X, y, algorithm = method, n_cv=8, verbose=1)       
+			Models[method]['Yt_hat'].append(Yt_hat)
+			Models[method]['PR2'].append(PR2)           
+
+	for m in Models.iterkeys():
+		Models[m]['Yt_hat'] = np.array(Models[m]['Yt_hat'])
+		Models[m]['PR2'] = np.array(Models[m]['PR2'])
+		
+	return Models
+
 #####################################################################
 # COMBINATIONS DEFINITION
 #####################################################################
-combination = {
-	11: 	{
-		 	'features' 	:	['ang'],
-			'targets'	:	['Pos.8', 'Pos.9', 'Pos.10', 'ADn.9', 'ADn.10', 'ADn.11'],
-			'figure'	:	'../../figures/11_XGB_threshold_angular_x.pdf'
-		},
-	12:	{
-			'features' 	:	['x', 'y'],
-			'targets'	:	['Pos.8', 'Pos.9', 'Pos.10', 'ADn.9', 'ADn.10', 'ADn.11'],
-			'figure'	:	'../../figures/12_XGB_threshold_xy.pdf'
-		},
-	13:	{
-			'features' 	:	['ang', 'x', 'y'],
-			'targets'	:	['Pos.8', 'Pos.9', 'Pos.10', 'ADn.9', 'ADn.10', 'ADn.11'],
-			'figure'	:	'../../figures/13_XGB_threshold_xyang.pdf'
-		},
+combination = {	
 	14: {
 			'features'	:	['ang'],
-			'targets'	:	[i for i in list(data) if i.split(".")[0] in ['Pos', 'ADn']],
-			'figure'	:	''
-		},
-	15:	{
-			'features'	: 	['x', 'y'],
-			'targets'	: 	[i for i in list(data) if i.split(".")[0] in ['Pos', 'ADn']],
-			'figure'	: 	'../../figures/14_XGB_threshold_density.pdf'
-		}
+			'targets'	:	[i for i in list(data) if i.split(".")[0] in ['Pos', 'ADn']],			
+		},	
 	}
 
 
@@ -109,36 +111,38 @@ combination = {
 # LEARNING XGB
 #####################################################################
 
-bsts = {i:{} for i in combination.iterkeys()} # to keep the boosted tree
-params = {'objective': "count:poisson", #for poisson output
-    'eval_metric': "logloss", #loglikelihood loss
-    'seed': 2925, #for reproducibility
-    'silent': 0,
-    'learning_rate': 0.1,
-    'min_child_weight': 2, 'n_estimators': 1,
-    'subsample': 0.6, 'max_depth': 1000, 'gamma': 0.01,
-    'reg_alpha': 0.0,
-    'reg_lambda':0.0}
+# bsts = {i:{} for i in combination.iterkeys()} # to keep the boosted tree
+# params = {'objective': "count:poisson", #for poisson output
+#     'eval_metric': "logloss", #loglikelihood loss
+#     'seed': 2925, #for reproducibility
+#     'silent': 0,
+#     'learning_rate': 0.1,
+#     'min_child_weight': 2, 'n_estimators': 1,
+#     'subsample': 0.6, 'max_depth': 1000, 'gamma': 0.01,
+#     'reg_alpha': 0.0,
+#     'reg_lambda':0.0}
 
-num_round = 1
+# num_round = 1
 
-X = data['ang'].values
-Y = data['Pos.5']
-dtrain = xgb.DMatrix(np.vstack(X), label = np.vstack(Y))
-bst = xgb.train(params, dtrain, num_round)
-a = bst.get_dump()
-print a[0]
+# X = data['ang'].values
+# Y = data['Pos.5']
+# dtrain = xgb.DMatrix(np.vstack(X), label = np.vstack(Y))
+# bst = xgb.train(params, dtrain, num_round)
+# a = bst.get_dump()
+# print a[0]
+# sys.exit()
+
+methods = ['xgb_run']
+for k in np.sort(combination.keys()):
+    features = combination[k]['features']
+    targets = combination[k]['targets'] 
+
+    results = test_features(features, targets, methods)
+    
+    
+
 sys.exit()
 
-for k in combination.keys():
-	features = combination[k]['features']
-	targets = combination[k]['targets']	
-	X = data[features].values
-	Yall = data[targets].values	
-	for i in xrange(Yall.shape[1]):
-		dtrain = xgb.DMatrix(X, label=Yall[:,i])
-		bst = xgb.train(params, dtrain, num_round)		
-		bsts[k][targets[i]] = bst
 
 #####################################################################
 # TUNING CURVE

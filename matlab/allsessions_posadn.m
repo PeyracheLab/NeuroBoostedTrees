@@ -9,7 +9,7 @@ for i = 1:size(file)
     dset = file(i)           
     data_dir = fullfile(path_to_data, char(dset));
     cd(data_dir);
-    binSize = 0.005; %in seconds
+    binSize = 0.010; %in seconds
     load('Analysis/BehavEpochs.mat','wakeEp');
     load('Analysis/SpikeData.mat', 'S', 'shank');
     load('Analysis/HDCells.mat'); 

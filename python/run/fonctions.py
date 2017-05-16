@@ -139,13 +139,13 @@ def xgb_run(Xr, Yr, Xt):
     'seed': 2925, #for reproducibility
     'silent': 1,
     'learning_rate': 0.05,
-    'min_child_weight': 2, 'n_estimators': 150,
-    'subsample': 0.6, 'max_depth': 4, 'gamma': 0.0}
+    'min_child_weight': 2, 'n_estimators': 500,
+    'subsample': 0.6, 'max_depth': 100, 'gamma': 0.0}
     
     dtrain = xgb.DMatrix(Xr, label=Yr)
     dtest = xgb.DMatrix(Xt)
 
-    num_round = 150
+    num_round = 500
     bst = xgb.train(params, dtrain, num_round)
 
     Yt = bst.predict(dtest)

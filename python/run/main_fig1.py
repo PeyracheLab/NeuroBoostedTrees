@@ -126,7 +126,7 @@ colors=['#F5A21E', '#02A68E', '#EF3E34', '#134B64', '#FF07CD','b']
 # LOADING CLUSTER RESULTS 
 ########################################################################
 # # automatic fetching | transfer in ../data/results_pr2
-os.system("scp -r viejo@guillimin.hpc.mcgill.ca:~/results_pr2_fig1/* ../data/results_pr2/")
+# os.system("scp -r viejo@guillimin.hpc.mcgill.ca:~/results_pr2_fig1/* ../data/results_pr2/")
 methods = ['kernel', 'mb_60', 'xgb_run', 'lin_comb']
 final_data = {  'ADn':{k:{'PR2':[]} for k in methods},
                 'Pos':{k:{'PR2':[]} for k in methods} }                
@@ -136,6 +136,8 @@ for file in os.listdir("../data/results_pr2/wake/"):
     for g in ['ADn', 'Pos']:
         for m in methods:
             final_data[g][m]['PR2'].append(tmp[g][m]['PR2'])
+            if g == 'ADn' and m == 'xgb_run':
+                print np.mean(tmp[g][m]['PR2'])
 for g in ['ADn', 'Pos']:
     for m in methods:
         final_data[g][m]['PR2'] = np.vstack(final_data[g][m]['PR2'])
