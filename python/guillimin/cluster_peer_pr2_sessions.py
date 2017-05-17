@@ -23,33 +23,8 @@ from optparse import OptionParser
 from sklearn.linear_model import LinearRegression
 
 #######################################################################
-# ARGUMENT MANAGER                                                                    
-#######################################################################
-if not sys.argv[1:]:
-   sys.stdout.write("Sorry: you must specify at least 1 argument")
-   sys.stdout.write("More help avalaible with -h or --help option")
-   sys.exit(0)
-parser = OptionParser()
-parser.add_option("-e", "--episode", action="store", help="The episode type", default=False)
-parser.add_option("-s", "--session", action="store", help="The name of the session", default=False)
-(options, args) = parser.parse_args()
-#######################################################################
-
-
-#######################################################################
 # FONCTIONS DEFINITIONS
 #######################################################################
-def kernel(Xr, Yr, Xt):
-    newX = np.zeros((Xr.shape[0], 12)) # up to six order    
-    newXt = np.zeros((Xt.shape[0], 12))
-    for i, j in zip(xrange(1,7), xrange(0, 12, 2)):
-        newX[:,j] = np.cos(i*Xr).flatten()
-        newX[:,j+1] = np.sin(i*Xr).flatten()
-        newXt[:,j] = np.cos(i*Xt).flatten()
-        newXt[:,j+1] = np.sin(i*Xt).flatten()
-    Yt = lin_comb(newX, Yr, newXt)    
-    return Yt
-
 def xgb_run(Xr, Yr, Xt):
     # params = {'objective': "count:poisson", #for poisson output
     # 'eval_metric': "logloss", #loglikelihood loss
@@ -63,39 +38,17 @@ def xgb_run(Xr, Yr, Xt):
     'seed': 2925, #for reproducibility
     'silent': 1,
     'learning_rate': 0.1,
-    'min_child_weight': 2, 'n_estimators': 1000,
-    # 'subsample': 0.6, 
+    'min_child_weight': 2, 
+    'n_estimators': 1000,
+    # 'subsample': 0.5,
     'max_depth': 5, 
-    'gamma': 0.5
-    }
-    
+    'gamma': 0.5}
     dtrain = xgb.DMatrix(Xr, label=Yr)
     dtest = xgb.DMatrix(Xt)
-
     num_round = 1000
     bst = xgb.train(params, dtrain, num_round)
-
     Yt = bst.predict(dtest)
     return Yt
-
-def lin_comb(Xr, Yr, Xt):
-    lr = LinearRegression()
-    lr.fit(Xr, Yr)
-    Yt = lr.predict(Xt)
-    
-    #rectify outputs
-    Yt = np.maximum(Yt,np.zeros(Yt.shape))
-    return Yt 
-
-def mb_60(Xr, Yr, Xt):
-    nb_bins = 60
-    bins = np.linspace(np.vstack((Xr, Xt)).min(), np.vstack((Xr, Xt)).max()+1e-8, nb_bins+1)
-    index = np.digitize(Xr, bins).flatten()    
-    tcurve = np.array([np.sum(Yr[index == i]) for i in xrange(1, nb_bins+1)])
-    occupancy = np.array([np.sum(index == i) for i in xrange(1, nb_bins+1)])
-    tcurve = (tcurve/occupancy)*40.0  
-    new_index = np.digitize(Xt, bins).flatten()    
-    return tcurve[new_index-1]/40.0 
 
 def poisson_pseudoR2(y, yhat, ynull):    
     yhat = yhat.reshape(y.shape)
@@ -150,81 +103,119 @@ def fit_cv(X, Y, algorithm, n_cv=10, verbose=1):
 
     return Y_hat, pR2_cv
 
-def test_features(features, targets, learners = ['glm_pyglmnet', 'nn', 'xgb_run', 'ens']):
-    '''
-        Main function of the script
-        Return : dictionnary with for each models the score PR2 and Yt_hat
-    '''
+def test_features(features, targets, learners = ['glm_pyglmnet', 'nn', 'xgb_run', 'ens']):  
     X = data[features].values
-    Y = data[targets].values    
+    Y = np.vstack(data[targets].values)
     Models = {method:{'PR2':[],'Yt_hat':[]} for method in learners}
     learners_ = list(learners)
+    # print learners_
+
     for i in xrange(Y.shape[1]):
-        y = Y[:,i]        
-        for method in learners_:        
+        y = Y[:,i]
+        # TODO : make sure that 'ens' is the last learner
+        for method in learners_:
             # print('Running '+method+'...')                              
             Yt_hat, PR2 = fit_cv(X, y, algorithm = method, n_cv=8, verbose=0)       
             Models[method]['Yt_hat'].append(Yt_hat)
             Models[method]['PR2'].append(PR2)           
+
     for m in Models.iterkeys():
         Models[m]['Yt_hat'] = np.array(Models[m]['Yt_hat'])
-        Models[m]['PR2'] = np.array(Models[m]['PR2'])        
+        Models[m]['PR2'] = np.array(Models[m]['PR2'])
+        
     return Models
 
 
+#######################################################################
+# ARGUMENT MANAGER                                                                    
+#######################################################################
+if not sys.argv[1:]:
+   sys.stdout.write("Sorry: you must specify at least 1 argument")
+   sys.stdout.write("More help avalaible with -h or --help option")
+   sys.exit(0)
+parser = OptionParser()
+parser.add_option("-e", "--episode", action="store", help="The episode type", default=False)
+parser.add_option("-s", "--session", action="store", help="The name of the session", default=False)
+(options, args) = parser.parse_args()
+#######################################################################
+
 #####################################################################
-# DATA LOADING
+# DATA LOADING | ALL SESSIONS WAKE
 #####################################################################
-# adrien_data = scipy.io.loadmat(os.path.expanduser('../data/sessions/'+options.episode+'/'+options.session))
+final_data = {g:{
+    k:{'PR2':[], 'Yt_hat':[]} for k in ['peer', 'cros']
+} for g in ['ADn', 'Pos']}
+bsts = {g:{k:{} for k in ['peer', 'cros']} for g in ['ADn', 'Pos']}
 adrien_data = scipy.io.loadmat(os.path.expanduser('~/sessions/'+options.episode+'/'+options.session))
 #####################################################################
 # DATA ENGINEERING
 #####################################################################
 data            =   pd.DataFrame(index=np.arange(len(adrien_data['Ang'])))
 data['time']    =   np.arange(len(adrien_data['Ang']))      # TODO : import real time from matlab script
-data['ang']     =   adrien_data['Ang'].flatten()            # angular direction of the animal head
-data['x']       =   adrien_data['X'].flatten()              # x position of the animal 
-data['y']       =   adrien_data['Y'].flatten()              # y position of the animal
-# Engineering features
-data['cos']     =   np.cos(adrien_data['Ang'].flatten())    # cosinus of angular direction
-data['sin']     =   np.sin(adrien_data['Ang'].flatten())    # sinus of angular direction
 
 # Firing data
 for i in xrange(adrien_data['Pos'].shape[1]): data['Pos'+'.'+str(i)] = adrien_data['Pos'][:,i]
 for i in xrange(adrien_data['ADn'].shape[1]): data['ADn'+'.'+str(i)] = adrien_data['ADn'][:,i]
 
+#####################################################################
+# COMBINATIONS DEFINITION
+#####################################################################
+combination = {}
+targets = [i for i in list(data) if i.split(".")[0] in ['Pos', 'ADn']]
 
+for n in ['Pos', 'ADn']:            
+    combination[n] = {'peer':{},'cros':{}}  
+    sub = [i for i in list(data) if i.split(".")[0] == n]
+    for k in sub:
+        combination[n]['peer'][k] = {   'features'  : [i for i in sub if i != k],
+                                        'targets'   : k
+                                    }
+        combination[n]['cros'][k] = {   'features'  : [i for i in targets if i.split(".")[0] != k.split(".")[0]],
+                                        'targets'   : k
+                                    }       
 ########################################################################
-# COMBINATIONS DEFINITIONS
+# MAIN LOOP FOR R2
 ########################################################################
-combination = {
-    'Pos':  {
-            'features'  :   ['ang'],
-            'targets'   :   [i for i in list(data) if i.split(".")[0] == 'Pos'], 
-            },          
-    'ADn':  {
-            'features'  :   ['ang'],
-            'targets'   :   [i for i in list(data) if i.split(".")[0] == 'ADn'],
-            }
-}
+methods = ['xgb_run']
+for g in combination.iterkeys():            
+    for w in combination[g].iterkeys():             
+        for k in combination[g][w].iterkeys():
+            features = combination[g][w][k]['features']
+            targets =  combination[g][w][k]['targets'] 
+            results = test_features(features, targets, methods)                                
+            final_data[g][w]['PR2'].append(results['xgb_run']['PR2'][0])
+            final_data[g][w]['Yt_hat'].append(results['xgb_run']['Yt_hat'][0])
 
-# ########################################################################
-# # MAIN LOOP
-# ########################################################################
+#####################################################################
+# LEARNING XGB
+#####################################################################       
+    params = {'objective': "count:poisson", #for poisson output
+    'eval_metric': "poisson-nloglik", #loglikelihood loss
+    'seed': 2925, #for reproducibility
+    'silent': 1,
+    'learning_rate': 0.1,
+    'min_child_weight': 2, 
+    'n_estimators': 1000,
+    # 'subsample': 0.5,
+    'max_depth': 5, 
+    'gamma': 0.5}   
+num_round = 1000
 
-methods = ['mb_60', 'xgb_run', 'lin_comb', 'kernel']
-final_data = {}
+for g in combination.iterkeys():            
+    for w in combination[g].iterkeys():             
+        for k in combination[g][w].iterkeys():
+            features = combination[g][w][k]['features']
+            targets =  combination[g][w][k]['targets']  
+            X = data[features].values
+            Yall = data[targets].values     
+            dtrain = xgb.DMatrix(X, label=Yall)
+            bst = xgb.train(params, dtrain, num_round)
+            bsts[g][w][options.session.split(".")[1]+"."+k] = bst
 
-for k in np.sort(combination.keys()):
-    features = combination[k]['features']
-    targets = combination[k]['targets'] 
+for g in final_data.iterkeys():
+    for w in final_data[g].iterkeys():
+        for s in final_data[g][w].iterkeys():
+            final_data[g][w][s] = np.array(final_data[g][w][s])
 
-    results = test_features(features, targets, methods)
-    
-    final_data[k] = results    
-
-
-with open("/home/viejo/results_pr2_fig1/"+options.episode+"/pr2."+options.session.split('.')[1]+".pickle", 'wb') as f:
-    pickle.dump(final_data, f)
-
-
+pickle.dump(final_data, open("/home/viejo/results_peer_fig3/"+options.episode+"/peer_pr2."+options.session.split(".")[1]+".pickle", 'wb'))
+pickle.dump(bsts, open("/home/viejo/results_peer_fig3/"+options.episode+"/peer_bsts."+options.session.split(".")[1]+".pickle", 'wb'))            

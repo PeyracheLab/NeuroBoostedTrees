@@ -50,9 +50,12 @@ def xgb_run_param(X, Y, max_depth, num_round, n_cv=8, verbose=1):
                 'eval_metric': "poisson-nloglik", #loglikelihood loss
                 'seed': 2925, #for reproducibility
                 'silent': 1,
-                'learning_rate': 0.05,
-                'min_child_weight': 2, 'n_estimators': 580,
-                'subsample': 0.6, 'max_depth': max_depth, 'gamma': 0.0}    
+                'learning_rate': 0.1,
+                'min_child_weight': 2, 
+                'n_estimators':  num_round,
+                # 'subsample': 0.6, 
+                'max_depth': max_depth, 
+                'gamma': 0.5}    
 
     if np.ndim(X)==1:
         X = np.transpose(np.atleast_2d(X))
@@ -86,8 +89,10 @@ def grid_search(features, targets):
     X = data[features].values
     Y = data[targets].values    
     
-    max_depth_step = 2**np.arange(1,11)
-    max_trees_step = np.array([5,20,40,80,100,150,200,250,300,350,400,500])
+    # max_depth_step = 2**np.arange(1,11)
+    # max_depth_step = np.arange(0, 100, 10)
+    max_depth_step = [3,5,8,10,12,15,20,25,30,40]    
+    max_trees_step = [10, 50, 100, 150, 200, 500, 1000, 1500, 2000, 3000]
 
     grid_results = np.zeros((Y.shape[1],len(max_depth_step),len(max_trees_step)))
     
@@ -109,7 +114,7 @@ def grid_search(features, targets):
 #####################################################################
 # DATA LOADING
 #####################################################################
-adrien_data = scipy.io.loadmat(os.path.expanduser('~/XGBoost_session/'+options.session))
+adrien_data = scipy.io.loadmat(os.path.expanduser('~/sessions/wake/'+options.session))
 
 grid = {}
 

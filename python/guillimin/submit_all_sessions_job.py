@@ -20,19 +20,19 @@ from time import sleep
 ########################################################################
 # CREATE DIRECTORY RESULTS
 ########################################################################
-os.system("rm -r /home/viejo/results_grid_sessions")
-os.system("mkdir /home/viejo/results_grid_sessions")
+# os.system("rm -r /home/viejo/results_grid_sessions")
+# os.system("mkdir /home/viejo/results_grid_sessions")
 
 #####################################################################
 # SESSION LOADING
 #####################################################################
-all_sessions = os.listdir(os.path.expanduser("~/XGBoost_session"))
+all_sessions = os.listdir(os.path.expanduser("~/sessions/wake/"))
 for ses in all_sessions:
 
     #####################################################################
     # DATA LOADING
     #####################################################################
-    adrien_data = scipy.io.loadmat(os.path.expanduser('~/XGBoost_session/'+ses))    
+    adrien_data = scipy.io.loadmat(os.path.expanduser('~/sessions/wake/'+ses))    
     
     #####################################################################
     # DATA ENGINEERING
@@ -78,8 +78,8 @@ for ses in all_sessions:
         filename = "submit_"+n+"_"+ses.split(".")[1]+".sh"
         f = open(filename, "w")
         f.writelines("#!/bin/bash\n")
-        f.writelines("#PBS -l nodes=1:ppn=16\n")
-        f.writelines("#PBS -l walltime=12:00:00\n")
+        f.writelines("#PBS -l nodes=1:ppn=12\n")
+        f.writelines("#PBS -l walltime=06:00:00\n")
         f.writelines("#PBS -A exm-690-aa\n")
         f.writelines("#PBS -j oe\n")
         f.writelines("#PBS -N gridsearch_"+ses+"_"+n+"\n")    
@@ -94,4 +94,4 @@ for ses in all_sessions:
         os.system("qsub "+filename+" -q sw")
         os.system("rm "+filename)
         print filename
-        sleep(120)
+        sleep(15)
