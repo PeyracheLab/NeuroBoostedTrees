@@ -3,6 +3,6 @@
 #PBS -l walltime=12:00:00
 #PBS -A exm-690-aa
 #PBS -j oe
-#PBS -N gridsearch_xgboost
+#PBS -N fig3
 
-python /home/viejo/Prediction_ML_GLM/python/guillimin/cluster_ang_grid_search.py
+python /home/viejo/Prediction_ML_GLM/python/run/main_fig3.py

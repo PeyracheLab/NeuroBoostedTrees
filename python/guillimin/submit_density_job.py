@@ -41,9 +41,9 @@ for ep in ['wake']:
         f.writelines("#PBS -l walltime=02:00:00\n")
         f.writelines("#PBS -A exm-690-aa\n")
         f.writelines("#PBS -j oe\n")
-        f.writelines("#PBS -N pr2_"+ep+"_"+ses.split(".")[1]+"\n")    
+        f.writelines("#PBS -N density_"+ep+"_"+ses.split(".")[1]+"\n")    
         f.writelines("\n")                                                  
-        f.writelines("python /home/viejo/Prediction_ML_GLM/python/guillimin/cluster_ang_pr2_sessions.py -e "+ep+" -s "+ses+"\n")
+        f.writelines("python /home/viejo/Prediction_ML_GLM/python/guillimin/cluster_density_sessions.py -e "+ep+" -s "+ses+"\n")
         f.close()
         #-----------------------------------                
         # ------------------------------------                                                                                            
