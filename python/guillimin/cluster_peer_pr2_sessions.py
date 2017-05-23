@@ -39,13 +39,13 @@ def xgb_run(Xr, Yr, Xt):
     'silent': 1,
     'learning_rate': 0.1,
     'min_child_weight': 2, 
-    'n_estimators': 1000,
+    'n_estimators': 100,
     # 'subsample': 0.5,
     'max_depth': 5, 
     'gamma': 0.5}
     dtrain = xgb.DMatrix(Xr, label=Yr)
     dtest = xgb.DMatrix(Xt)
-    num_round = 1000
+    num_round = 100
     bst = xgb.train(params, dtrain, num_round)
     Yt = bst.predict(dtest)
     return Yt
@@ -77,25 +77,26 @@ def fit_cv(X, Y, algorithm, n_cv=10, verbose=1):
     cv_kf = KFold(n_splits=n_cv, shuffle=True, random_state=42)
     skf  = cv_kf.split(X)
 
-    i=1
+    i=0
     Y_hat=np.zeros(len(Y))
-    pR2_cv = list()
-    
+    pR2_cv = list()    
+
 
     for idx_r, idx_t in skf:
         if verbose > 1:
-            print( '...runnning cv-fold', i, 'of', n_cv)
-        i+=1
+            print( '...runnning cv-fold', i, 'of', n_cv)        
         Xr = X[idx_r, :]
         Yr = Y[idx_r]
         Xt = X[idx_t, :]
         Yt = Y[idx_t]           
         Yt_hat = eval(algorithm)(Xr, Yr, Xt)        
+
         Y_hat[idx_t] = Yt_hat
         pR2 = poisson_pseudoR2(Yt, Yt_hat, np.mean(Yr))
         pR2_cv.append(pR2)
         if verbose > 1:
             print( 'pR2: ', pR2)
+        i+=1
 
     if verbose > 0:
         print("pR2_cv: %0.6f (+/- %0.6f)" % (np.mean(pR2_cv),
@@ -110,18 +111,29 @@ def test_features(features, targets, learners = ['glm_pyglmnet', 'nn', 'xgb_run'
     learners_ = list(learners)
     # print learners_
 
+    real_corr = np.zeros(X.shape[1])
+    pred_corr = np.zeros(X.shape[1])
+
     for i in xrange(Y.shape[1]):
         y = Y[:,i]
-        # TODO : make sure that 'ens' is the last learner
         for method in learners_:
             # print('Running '+method+'...')                              
             Yt_hat, PR2 = fit_cv(X, y, algorithm = method, n_cv=8, verbose=0)       
             Models[method]['Yt_hat'].append(Yt_hat)
             Models[method]['PR2'].append(PR2)           
+            # calling for correlation 
+            # correlation between each Xt column and Yt/Yt_hat
+            for n in xrange(X.shape[1]):
+                real_corr[n] = scipy.stats.pearsonr(X[:,n], y)[0]
+                pred_corr[n] = scipy.stats.pearsonr(X[:,n], Yt_hat)[0]
+
+    diffcorre = real_corr - pred_corr
+
 
     for m in Models.iterkeys():
         Models[m]['Yt_hat'] = np.array(Models[m]['Yt_hat'])
         Models[m]['PR2'] = np.array(Models[m]['PR2'])
+        Models[m]['corr'] = np.vstack([features, diffcorre])
         
     return Models
 
@@ -143,7 +155,7 @@ parser.add_option("-s", "--session", action="store", help="The name of the sessi
 # DATA LOADING | ALL SESSIONS WAKE
 #####################################################################
 final_data = {g:{
-    k:{'PR2':[], 'Yt_hat':[]} for k in ['peer', 'cros']
+    k:{'PR2':[], 'Yt_hat':[], 'corr':{}} for k in ['peer', 'cros']
 } for g in ['ADn', 'Pos']}
 bsts = {g:{k:{} for k in ['peer', 'cros']} for g in ['ADn', 'Pos']}
 adrien_data = scipy.io.loadmat(os.path.expanduser('~/sessions/'+options.episode+'/'+options.session))
@@ -174,17 +186,34 @@ for n in ['Pos', 'ADn']:
                                         'targets'   : k
                                     }       
 ########################################################################
+# NEED TO WRITE NAME OF features
+########################################################################
+names = pickle.load(open("../z620/fig3_names.pickle", 'rb'))
+for g in ['ADn', 'Pos']:
+    for w in ['peer', 'cros']:        
+        for k in combination[g][w].keys():
+            ses = options.session.split(".")[1]
+            names[g][w][ses+"."+k] = [ses+"."+n for n in combination[g][w][k]['features']]
+names = pickle.dump(names, open("../z620/fig3_names.pickle", 'wb'))
+
+########################################################################
 # MAIN LOOP FOR R2
 ########################################################################
 methods = ['xgb_run']
 for g in combination.iterkeys():            
     for w in combination[g].iterkeys():             
         for k in combination[g][w].iterkeys():
+            print options.session, g, w, k
             features = combination[g][w][k]['features']
-            targets =  combination[g][w][k]['targets'] 
-            results = test_features(features, targets, methods)                                
+            targets =  combination[g][w][k]['targets']             
+            results = test_features(features, targets, methods)
+            for i in xrange(len(results['xgb_run']['corr'][0])):
+                results['xgb_run']['corr'][0][i] = options.session.split(".")[1]+"."+results['xgb_run']['corr'][0][i]
+                
             final_data[g][w]['PR2'].append(results['xgb_run']['PR2'][0])
             final_data[g][w]['Yt_hat'].append(results['xgb_run']['Yt_hat'][0])
+            final_data[g][w]['corr'][options.session.split(".")[1]+"."+k] = results['xgb_run']['corr']
+        
 
 #####################################################################
 # LEARNING XGB
@@ -197,9 +226,9 @@ for g in combination.iterkeys():
     'min_child_weight': 2, 
     'n_estimators': 1000,
     # 'subsample': 0.5,
-    'max_depth': 5, 
+    'max_depth': 6, 
     'gamma': 0.5}   
-num_round = 1000
+num_round = 95
 
 for g in combination.iterkeys():            
     for w in combination[g].iterkeys():             
@@ -214,8 +243,8 @@ for g in combination.iterkeys():
 
 for g in final_data.iterkeys():
     for w in final_data[g].iterkeys():
-        for s in final_data[g][w].iterkeys():
+        for s in ['PR2', 'Yt_hat']:
             final_data[g][w][s] = np.array(final_data[g][w][s])
 
-pickle.dump(final_data, open("/home/viejo/results_peer_fig3/"+options.episode+"/peer_pr2."+options.session.split(".")[1]+".pickle", 'wb'))
-pickle.dump(bsts, open("/home/viejo/results_peer_fig3/"+options.episode+"/peer_bsts."+options.session.split(".")[1]+".pickle", 'wb'))            
+pickle.dump(final_data, open("/home/guillaume/results_peer_fig3/"+options.episode+"/peer_pr2."+options.session.split(".")[1]+".pickle", 'wb'))
+pickle.dump(bsts, open("/home/guillaume/results_peer_fig3/"+options.episode+"/peer_bsts."+options.session.split(".")[1]+".pickle", 'wb'))            
