@@ -7,7 +7,7 @@ for i=1:size(file)
         
         data_dir = fullfile(path_to_data,char(dset));        
         cd(data_dir);        
-        binSize = 0.02; %in seconds        
+        binSize = 0.200; %in seconds        
         
         [~,fbasename,~] = fileparts(pwd);
         %when the animal was exploring the arena
@@ -35,7 +35,7 @@ for i=1:size(file)
         %two is just not visible)
         dataEp  = intersect(dataEp,angGoodEp);
         %Restrict all data to sleep (i.e. exploration)
-        S       = Restrict(S,dataEp);
+        %S       = Restrict(S,dataEp);
         %reinitialize indices (there may be hd cells that were not in the thalamus
         %nor in 0the postub. Well, actually it's not possible knowing the structure
         %of this dataset, but you never know)
@@ -46,13 +46,14 @@ for i=1:size(file)
         S = S(hdC);
         %Bin it!
         Q       = MakeQfromS(S,binSize);
+        Q       = Restrict(Q,dataEp);
         %And give some data
         dQ      = Data(Q);
         dQadn   = dQ(:,thIx);
         dQpos   = dQ(:,poIx);
         smWd = 2.^(0:8);
-        dQadn   = gaussFilt(dQadn,5,0); 
-        dQpos   = gaussFilt(dQpos,5,0);
+        %dQadn   = gaussFilt(dQadn,5,0); 
+        %dQpos   = gaussFilt(dQpos,5,0);
         tStart  = Start(dataEp,'min');
         tEnd    = End(dataEp,'min');
         xlimEp  = [tStart(1) tEnd(end)];
@@ -69,5 +70,5 @@ for i=1:size(file)
         
         tmp = strsplit(char(dset), '/');    
         
-        save(strcat('/home/guillaume/Prediction_ML_GLM/python/data/sessions/rem/boosted_tree.', char(tmp(2)), '.mat'), '-struct', 'data_to_save');    
+        save(strcat('/home/guillaume/Prediction_ML_GLM/python/data/sessions_nosmoothing_200ms/rem/boosted_tree.', char(tmp(2)), '.mat'), '-struct', 'data_to_save');    
 end

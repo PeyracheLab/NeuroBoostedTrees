@@ -9,7 +9,7 @@ for i = 1:size(file)
     dset = file(i)           
     data_dir = fullfile(path_to_data, char(dset));
     cd(data_dir);
-    binSize = 0.010; %in seconds
+    binSize = 0.200; %in seconds
     load('Analysis/BehavEpochs.mat','wakeEp');
     load('Analysis/SpikeData.mat', 'S', 'shank');
     load('Analysis/HDCells.mat'); 
@@ -52,8 +52,8 @@ for i = 1:size(file)
     dQadn   = dQ(:,thIx);
     dQpos   = dQ(:,poIx);
     smWd = 2.^(0:8);
-    dQadn   = gaussFilt(dQadn,5,0); 
-    dQpos   = gaussFilt(dQpos,5,0);
+    %dQadn   = gaussFilt(dQadn,5,0); 
+    %dQpos   = gaussFilt(dQpos,5,0);
     tStart  = Start(wakeEp,'min');
     tEnd    = End(wakeEp,'min');
     xlimEp  = [tStart(1) tEnd(end)];
@@ -71,6 +71,6 @@ for i = 1:size(file)
     y = [y n];
     
     tmp = strsplit(char(dset), '/');    
-    save(strcat('/home/guillaume/Prediction_ML_GLM/python/data/sessions/wake/boosted_tree.', char(tmp(2)), '.mat'), '-struct', 'data_to_save');
+    save(strcat('/home/guillaume/Prediction_ML_GLM/python/data/sessions_nosmoothing_200ms/wake/boosted_tree.', char(tmp(2)), '.mat'), '-struct', 'data_to_save');
 end
     

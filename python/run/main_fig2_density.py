@@ -20,201 +20,83 @@ import sys, os
 import itertools
 import cPickle as pickle
 
-#######################################################################
-# FONCTIONS DEFINITIONS
-#######################################################################
-def extract_tree_threshold(trees):
-	n = len(trees.get_dump())
-	thr = {}
-	for t in xrange(n):
-		gv = xgb.to_graphviz(trees, num_trees=t)
-		body = gv.body		
-		for i in xrange(len(body)):
-			for l in body[i].split('"'):
-				if 'f' in l and '<' in l:
-					tmp = l.split("<")
-					if thr.has_key(tmp[0]):
-						thr[tmp[0]].append(float(tmp[1]))
-					else:
-						thr[tmp[0]] = [float(tmp[1])]					
-	for k in thr.iterkeys():
-		thr[k] = np.sort(np.array(thr[k]))
-	return thr
-
-def tuning_curve(x, f, nb_bins):    
-    bins = np.linspace(x.min(), x.max()+1e-8, nb_bins+1)
-    index = np.digitize(x, bins).flatten()    
-    tcurve = np.array([np.sum(f[index == i]) for i in xrange(1, nb_bins+1)])    
-    occupancy = np.array([np.sum(index == i) for i in xrange(1, nb_bins+1)])
-    tcurve = (tcurve/occupancy)*200.0
-    x = bins[0:-1] + (bins[1]-bins[0])/2.    
-    return (x, tcurve)
 
 #####################################################################
-# DATA LOADING | ALL SESSIONS WAKE
+# DATA LOADING FROM CLUSTER
 #####################################################################
-#TO SAVE
-tuningc = {}
-bsts = {i:{} for i in ['1.Pos','1.ADn','2.Pos','2.ADn','3.Pos','3.ADn']} # to keep the boosted tree
-
-# adrien_data = scipy.io.loadmat(os.path.expanduser('~/Dropbox (Peyrache Lab)/Peyrache Lab Team Folder/Data/HDCellData/data_test_boosted_tree_20ms.mat'))
-# m1_imported = scipy.io.loadmat('/home/guillaume/spykesML/data/m1_stevenson_2011.mat')
-for file in os.listdir("../data/sessions/wake/"):
-	print file
-	adrien_data = scipy.io.loadmat("../data/sessions/wake/"+file)
-	session = file.split(".")[1]
-
-#####################################################################
-# DATA ENGINEERING
-#####################################################################
-	data 			= 	pd.DataFrame()
-	data['time'] 	= 	np.arange(len(adrien_data['Ang']))		# TODO : import real time from matlab script
-	data['ang'] 	= 	adrien_data['Ang'].flatten() 			# angular direction of the animal head
-	data['x'] 		= 	adrien_data['X'].flatten() 				# x position of the animal 
-	data['y'] 		= 	adrien_data['Y'].flatten() 				# y position of the animal
-	data['vel'] 	= 	adrien_data['speed'].flatten() 			# velocity of the animal 
-	# Engineering features
-	data['cos']		= 	np.cos(adrien_data['Ang'].flatten())	# cosinus of angular direction
-	data['sin']		= 	np.sin(adrien_data['Ang'].flatten())	# sinus of angular direction
-	# Firing data
-	for i in xrange(adrien_data['Pos'].shape[1]): data['Pos'+'.'+str(i)] = adrien_data['Pos'][:,i]
-	for i in xrange(adrien_data['ADn'].shape[1]): data['ADn'+'.'+str(i)] = adrien_data['ADn'][:,i]
-
-#####################################################################
-# COMBINATIONS DEFINITION
-#####################################################################
-	combination = {
-		'1.ADn':	{
-				'features' 	:	['ang'],
-				'targets'	:	[i for i in list(data) if i.split(".")[0] == 'ADn']
-			},
-		'1.Pos':	{
-				'features' 	:	['ang'],
-				'targets'	:	[i for i in list(data) if i.split(".")[0] == 'Pos']
-			},		
-		'2.ADn':	{
-				'features' 	:	['x', 'y', 'ang'],
-				'targets'	:	[i for i in list(data) if i.split(".")[0] == 'ADn']
-			},
-		'2.Pos':	{
-				'features' 	:	['x', 'y', 'ang'],
-				'targets'	:	[i for i in list(data) if i.split(".")[0] == 'Pos']
-			},	
-		'3.ADn':	{
-				'features' 	:	['x', 'y'],
-				'targets'	:	[i for i in list(data) if i.split(".")[0] == 'ADn']
-			},
-		'3.Pos':	{
-				'features' 	:	['x', 'y'],
-				'targets'	:	[i for i in list(data) if i.split(".")[0] == 'Pos']
-			}
-		}
-
-#####################################################################
-# LEARNING XGB
-#####################################################################	
-	params = {'objective': "count:poisson", #for poisson output
-	    'eval_metric': "poisson-nloglik", #loglikelihood loss
-	    'seed': 2925, #for reproducibility
-	    'silent': 1,
-	    'learning_rate': 0.05,
-	    'min_child_weight': 2, 'n_estimators': 250,
-	    'subsample': 0.6, 'max_depth': 25, 'gamma': 0.0}        
-	num_round = 250
-
-	for k in combination.keys():
-		features = combination[k]['features']
-		targets = combination[k]['targets']	
-		X = data[features].values
-		Yall = data[targets].values	
-		for i in xrange(Yall.shape[1]):
-			print k, session+"."+targets[i]
-			dtrain = xgb.DMatrix(X, label=Yall[:,i])
-			bst = xgb.train(params, dtrain, num_round)
-			bsts[k][session+"."+targets[i]] = bst
-
-#####################################################################
-# TUNING CURVE
-#####################################################################
-	X = data['ang'].values
-	alln = [i for i in list(data) if i.split(".")[0] in ['Pos', 'ADn']]
-	for t in alln:
-		Y = data[t].values
-		tuningc[session+"."+t] = tuning_curve(X, Y, nb_bins = 60)
-
-
-#####################################################################
-# EXTRACT TREE STRUCTURE
-#####################################################################
-thresholds = {}
-for i in bsts.iterkeys():
-	thresholds[i] = {}
-	for j in bsts[i].iterkeys():
-		thresholds[i][j] = extract_tree_threshold(bsts[i][j])		
+#os.system("scp -r viejo@guillimin.hpc.mcgill.ca:~/results_density_fig2/wake ../data/results_density/")
+data = {}
+for f in os.listdir("../data/results_density/wake/"):
+	data[f.split(".")[1]] = pickle.load(open("../data/results_density/wake/"+f))
 
 
 #####################################################################
 # DENSITY OF SPLIT TO CENTER
 #####################################################################
 nb_bins = 20
-angdens = {}
-mean_angdens = {}
-for g in thresholds.iterkeys():	
+angdens = {} 			# TO SAVE
+mean_angdens = {}		# TO SAVE
+all_tcurve = {}			# TO SAVE
+
+groups = ['1.ADn', '1.Pos', '2.ADn', '2.Pos', '3.ADn', '3.Pos']
+for g in groups:	
 	if int(g.split(".")[0]) in [1,2]:  
 		angdens[g] = {}
 		mean_angdens[g] = []
-		for k in thresholds[g].iterkeys():
-			if int(g.split(".")[0]) == 1:  
-				thr = np.copy(thresholds[g][k]['f0'])
-			else :
-				thr = np.copy(thresholds[g][k]['f2'])
-			tun = np.copy(tuningc[k])
-			# correct thr with offset of tuning curve
-			offset = tun[0][np.argmax(tun[1])]
-			thr -= offset 
-			thr[thr<= -np.pi] += 2*np.pi
-			thr[thr> np.pi] -= 2*np.pi
-			if thr.max() > np.pi or thr.min() < -np.pi:
-				print "ERror"
-				sys.exit()
-					
-			bins = np.linspace(-np.pi, np.pi+1e-8, nb_bins+1)
-			hist, bin_edges = np.histogram(thr, bins, density = False)
-			hist = hist/float(hist.sum())
-			x = bin_edges[0:-1] + (bin_edges[1]-bin_edges[0])/2.
-			x[x>np.pi] -= 2*np.pi
-			hist = hist[np.argsort(x)]
-			angdens[g][k] = (np.sort(x), hist)
-			mean_angdens[g].append(hist)
+		for s in data.iterkeys(): # ALL SESSIONS
+			for k in data[s]['thr'][g].iterkeys(): # ALL NEURONS			
+				if int(g.split(".")[0]) == 1:  
+					thr = np.copy(data[s]['thr'][g][k]['f0'])
+				else :
+					thr = np.copy(data[s]['thr'][g][k]['f2'])
+				tun = np.copy(data[s]['tuni'][k])
+				all_tcurve[k] = tun
+				# correct thr with offset of tuning curve
+				offset = tun[0][np.argmax(tun[1])]
+				thr -= offset 
+				thr[thr<= -np.pi] += 2*np.pi
+				thr[thr> np.pi] -= 2*np.pi
+				if thr.max() > np.pi or thr.min() < -np.pi:
+					print "ERror"
+					sys.exit()
+						
+				bins = np.linspace(-np.pi, np.pi+1e-8, nb_bins+1)
+				hist, bin_edges = np.histogram(thr, bins, density = False)
+				hist = hist/float(hist.sum())
+				x = bin_edges[0:-1] + (bin_edges[1]-bin_edges[0])/2.
+				x[x>np.pi] -= 2*np.pi
+				hist = hist[np.argsort(x)]
+				angdens[g][k] = (np.sort(x), hist)
+				mean_angdens[g].append(hist)
 		mean_angdens[g] = (x, np.mean(mean_angdens[g], 0))
-
 
 xydens = {}
 mean_xydens = {}
 twod_xydens = {}
-for g in thresholds.iterkeys():
+for g in groups:
 	if int(g.split(".")[0]) in [2,3]:  
 		xydens[g] = {}
 		mean_xydens[g] = {'x':[], 'y':[]}
 		twod_xydens[g] = []
-		for k in thresholds[g].iterkeys():
-			xt = np.copy(thresholds[g][k]['f0'])
-			yt = np.copy(thresholds[g][k]['f1'])
-			# let's normalize xt and yt
-			xt -= xt.min()
-			xt /= xt.max()
-			yt -= yt.min()
-			yt /= yt.max()			
-			bins = np.linspace(0, 1, 20+1)
-			xh, bin_edges = np.histogram(xt, bins, density = False)
-			yh, bin_edges = np.histogram(yt, bins, density = False)
-			xh = xh/float(xh.sum())
-			yh = yh/float(yh.sum())			
-			x = bin_edges[0:-1] + (bin_edges[1]-bin_edges[0])/2.
-			xydens[g][k] = (x, xh, yh)
-			mean_xydens[g]['x'].append(xh)
-			mean_xydens[g]['y'].append(yh)
-			twod_xydens[g].append(np.vstack(xydens[g][k][1])*xydens[g][k][2])
+		for s in data.iterkeys(): # ALL SESSIONS
+			for k in data[s]['thr'][g].iterkeys(): # ALL NEURONS
+				xt = np.copy(data[s]['thr'][g][k]['f0'])
+				yt = np.copy(data[s]['thr'][g][k]['f1'])
+				# let's normalize xt and yt
+				xt -= xt.min()
+				xt /= xt.max()
+				yt -= yt.min()
+				yt /= yt.max()			
+				bins = np.linspace(0, 1, 20+1)
+				xh, bin_edges = np.histogram(xt, bins, density = False)
+				yh, bin_edges = np.histogram(yt, bins, density = False)
+				xh = xh/float(xh.sum())
+				yh = yh/float(yh.sum())			
+				x = bin_edges[0:-1] + (bin_edges[1]-bin_edges[0])/2.
+				xydens[g][k] = (x, xh, yh)
+				mean_xydens[g]['x'].append(xh)
+				mean_xydens[g]['y'].append(yh)
+				twod_xydens[g].append(np.vstack(xydens[g][k][1])*xydens[g][k][2])
 
 		mean_xydens[g]['x'] = np.mean(mean_xydens[g]['x'], 0)
 		mean_xydens[g]['y'] = np.mean(mean_xydens[g]['y'], 0)
@@ -224,24 +106,23 @@ for g in thresholds.iterkeys():
 ratio = {}
 for g in ['2.Pos', '2.ADn']:	
 	ratio[g.split('.')[1]] = {}
-	for k in thresholds[g].iterkeys():						
-		ratio[g.split('.')[1]][k] = np.array([len(thresholds[g][k][f]) for f in ['f2', 'f0', 'f1']])
-		ratio[g.split('.')[1]][k] = np.array([
-				len(thresholds[g][k]['f2']),
-				len(thresholds[g][k]['f0'])+len(thresholds[g][k]['f1'])
-			])
-		ratio[g.split('.')[1]][k] = ratio[g.split('.')[1]][k]/float(np.sum(ratio[g.split('.')[1]][k]))
+	for s in data.iterkeys(): # ALL SESSIONS
+		for k in data[s]['thr'][g].iterkeys(): # ALL NEURONS	
+			ratio[g.split('.')[1]][k] = np.array([len(data[s]['thr'][g][k][f]) for f in ['f2', 'f0', 'f1']])
+			ratio[g.split('.')[1]][k] = ratio[g.split('.')[1]][k]/float(np.sum(ratio[g.split('.')[1]][k]))
 
-sys.exit()
+
 
 all_data = {}
 all_data['angdens'] = angdens
 all_data['mean_angdens'] = mean_angdens
 all_data['ratio'] = ratio
 all_data['twod_xydens'] = twod_xydens
+all_data['alltcurve'] = all_tcurve
+
 pickle.dump(all_data, open("../data/fig2_density.pickle", 'wb'))
 
-
+sys.exit()
 
 #####################################################################
 # PLOTTING

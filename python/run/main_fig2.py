@@ -24,8 +24,9 @@ import cPickle as pickle
 #####################################################################
 # DATA LOADING
 #####################################################################
-adrien_data = scipy.io.loadmat(os.path.expanduser('~/Dropbox (Peyrache Lab)/Peyrache Lab Team Folder/Data/HDCellData/data_test_boosted_tree_20ms.mat'))
+# adrien_data = scipy.io.loadmat(os.path.expanduser('~/Dropbox (Peyrache Lab)/Peyrache Lab Team Folder/Data/HDCellData/data_test_boosted_tree_20ms.mat'))
 # m1_imported = scipy.io.loadmat('/home/guillaume/spykesML/data/m1_stevenson_2011.mat')
+adrien_data = scipy.io.loadmat(os.path.expanduser('../data/sessions/wake/boosted_tree.Mouse25-140130.mat'))
 
 #####################################################################
 # DATA ENGINEERING
@@ -48,6 +49,23 @@ for i in xrange(adrien_data['ADn'].shape[1]): data['ADn'+'.'+str(i)] = adrien_da
 #######################################################################
 # FONCTIONS DEFINITIONS
 #######################################################################
+def extract_tree_order(trees, n_feat):
+	# return array (len(trees), n_feat)	
+	n = len(trees.get_dump())
+	propor = np.zeros((n,n_feat))		
+	for t in xrange(n):
+		gv = xgb.to_graphviz(trees, num_trees=t)
+		body = gv.body		
+		for i in xrange(len(body)):
+			for l in body[i].split('"'):
+				if 'f' in l and '<' in l:
+					feat = l.split("<")[0]
+					propor[t,int(feat[1:])] += 1
+	
+	propor = np.cumsum(propor, 0)			
+	propor = propor/np.vstack(np.sum(propor, 1))
+	return propor
+
 def extract_tree_threshold(trees):
 	n = len(trees.get_dump())
 	thr = {}
@@ -66,7 +84,7 @@ def extract_tree_threshold(trees):
 		thr[k] = np.sort(np.array(thr[k]))
 	return thr
 
-def tuning_curve(x, f, nb_bins, tau = 50.0):	
+def tuning_curve(x, f, nb_bins, tau = 40.0):	
 	bins = np.linspace(x.min(), x.max()+1e-8, nb_bins+1)
 	index = np.digitize(x, bins).flatten()    
 	tcurve = np.array([np.sum(f[index == i]) for i in xrange(1, nb_bins+1)])  	
@@ -78,11 +96,24 @@ def tuning_curve(x, f, nb_bins, tau = 50.0):
 
 def fisher_information(x, f):
 	fish = np.zeros(len(f)-1)
+	slopes_ = []
+	tmpf = np.hstack((f[-1],f,f[0:3]))
 	binsize = x[1]-x[0]
-	for i in xrange(len(fish)):
-		fish[i] = np.power((f[i+1]-f[i])/binsize, 2)
-	fish = fish/fish.sum()
-	return (x[0:-1], fish)
+	# very bad # to correct of the offset of x points
+	tmpx = np.hstack((np.array([x[0]-binsize-(x.min()+(2*np.pi-x.max()))]),x,np.array([x[-1]+i*binsize+(x.min()+(2*np.pi-x.max())) for i in xrange(1,4)])))
+	
+	# plot(tmpx, tmpf, 'o')	
+	for i in xrange(len(f)):
+		slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(tmpx[i:i+3], tmpf[i:i+3])
+		slopes_.append(slope)	
+		# plot(tmpx[i:i+3], tmpx[i:i+3]*slope+intercept, '-')
+
+	fish = np.power(slopes_, 2)
+	# for i in xrange(len(fish)):
+	# 	fish[i] = np.power((f[i+1]-f[i])/binsize, 2)
+	# fish = fish/fish.sum()
+	# fish = fish/f[0:-1]
+	return (x, fish)
 
 #####################################################################
 # COMBINATIONS DEFINITION
@@ -91,31 +122,31 @@ combination = {
 	'ang':{
 		'ADn':	{
 			'features' 	:	['ang'],
-			'targets'	:	['ADn.8']
+			'targets'	:	['ADn.3']
 				},
 		'Pos':	{
 			'features' 	:	['ang'],
-			'targets'	:	['Pos.8']
+			'targets'	:	['Pos.0']
 				},		
 		},
-	# 'angxy': 	{
-	# 	'ADn':		{
-	# 		'features' 	:	['ang', 'x', 'y'],
-	# 		'targets'	:	['ADn.8']
-	# 				},
-	# 	'Pos':		{
-	# 		'features' 	:	['ang', 'x', 'y'],
-	# 		'targets'	:	['Pos.8']
-	# 				},				
-	# 			},
+	'angxy': 	{
+		'ADn':		{
+			'features' 	:	['ang', 'x', 'y'],
+			'targets'	:	['ADn.3']
+					},
+		'Pos':		{
+			'features' 	:	['ang', 'x', 'y'],
+			'targets'	:	['Pos.0']
+					},				
+				},
 	'xy': 	{
 		'ADn':		{
 			'features' 	:	['x', 'y'],
-			'targets'	:	['ADn.8']
+			'targets'	:	['ADn.3']
 					},
 		'Pos':		{
 			'features' 	:	['x', 'y'],
-			'targets'	:	['Pos.8']
+			'targets'	:	['Pos.0']
 					},				
 				}				
 	}
@@ -127,24 +158,25 @@ params = {'objective': "count:poisson", #for poisson output
     'eval_metric': "logloss", #loglikelihood loss
     'seed': 2925, #for reproducibility
     'silent': 1,
-    'learning_rate': 0.05,
-    'min_child_weight': 2, 'n_estimators': 150,
-    'subsample': 0.6, 'max_depth': 4, 'gamma': 0.0}        
-num_round = 150
-bsts = {}
-# for i in combination.iterkeys():
-# 	bsts[i] = {}
-# 	for j in combination[i].iterkeys():
-# 		features = combination[i][j]['features']
-# 		targets = combination[i][j]['targets']	
-# 		X = data[features].values
-# 		Yall = data[targets].values		
-# 		for k in xrange(Yall.shape[1]):
-# 			dtrain = xgb.DMatrix(X, label=Yall[:,k])
-# 			bst = xgb.train(params, dtrain, num_round)
-# 			bsts[i][j] = bst
+    'learning_rate': 0.01,
+    'min_child_weight': 2, 'n_estimators': 120,
+    'max_depth': 5}        
 
-bsts = pickle.load(open("fig2_bsts.pickle", 'rb'))
+num_round = 100
+bsts = {}
+for i in combination.iterkeys():
+	bsts[i] = {}
+	for j in combination[i].iterkeys():
+		features = combination[i][j]['features']
+		targets = combination[i][j]['targets']	
+		X = data[features].values
+		Yall = data[targets].values		
+		for k in xrange(Yall.shape[1]):
+			dtrain = xgb.DMatrix(X, label=Yall[:,k])
+			bst = xgb.train(params, dtrain, num_round)
+			bsts[i][j] = bst
+
+# bsts = pickle.load(open("fig2_bsts.pickle", 'rb'))
 
 #####################################################################
 # TUNING CURVE
@@ -174,19 +206,26 @@ angdens = all_data['angdens']
 mean_angdens = all_data['mean_angdens']
 ratio = all_data['ratio']
 twod = all_data['twod_xydens']
+tcurves = all_data['alltcurve']
 
 ########################################################################
 # CORRELATION
 ########################################################################
 corr = {'ADn':[], 'Pos':[]}
 for g in corr.iterkeys():
-	for n in angdens['1.'+g].iterkeys():
-		tun = tuning_curve(data['ang'].values, data[n].values, nb_bins = 20)		
-		fis = fisher_information(tun[0], tun[1])[1] # TODO
-		fis = np.hstack((fis, fis[0]))
-		dens = angdens['1.'+g][n][1]
+	for k in angdens['1.'+g].iterkeys():
+		tun = tcurves[k] # need to center tun 
+		offset = tun[0][np.argmax(tun[1])]
+		tun[0] -= offset
+		tun[0][tun[0] <= -np.pi] += 2*np.pi
+		tun[0][tun[0] > np.pi] -= 2*np.pi
+		tun[1] = tun[1][np.argsort(tun[0])]
+		tun[0] = np.sort(tun[0])		
+		fis = fisher_information(tun[0], tun[1])[1] # TODO		
+		# fis = np.hstack((fis, fis[0])) # looping		
+		fis = fis.reshape(20,3).mean(1)
+		dens = angdens['1.'+g][k][1]
 		corr[g].append(scipy.stats.pearsonr(fis, dens)[0])
-
 
 
 ########################################################################
@@ -240,9 +279,9 @@ import matplotlib.gridspec as gridspec
 from matplotlib.pyplot import *
 from mpl_toolkits.axes_grid.inset_locator import inset_axes
 
-order = [['ADn.9', 'ADn.10', 'ADn.11'], ['Pos.8', 'Pos.9', 'Pos.10']]
+
 trans = {'f0':'Angle','f1':'x pos','f2':'y pos'}
-colors_ = ['#330174', '#249f87']
+colors_ = ['#EE6C4D', '#3D5A80']
 title_ = ['Antero-dorsal nucleus', 'Post-subiculum']
 
 
@@ -260,32 +299,32 @@ outer = gridspec.GridSpec(2,2, width_ratios = [1.6,0.7], wspace = 0.2, hspace = 
 ##PLOT 1#################################################################################################################
 # Examples subplot 1 et 2
 gs = gridspec.GridSpecFromSubplotSpec(1,2, subplot_spec = outer[0], wspace = 0.4)
-
+limts = [(1.5,5),(0.7, 3.6)]
 for e, i in zip(['ADn','Pos'],range(2)):			
 	ax = subplot(gs[i])
-	simpleaxis(ax)
-	[ax.axvline(l, alpha = 0.1, color = 'grey', linewidth = 0.1) for l in thresholds['ang'][e]['f0']]	
+	simpleaxis(ax)	
+	[ax.axvline(l, alpha = 0.9, color = 'grey', linewidth = 0.2) for l in np.unique(thresholds['ang'][e]['f0'])[0:100]]	
 	fisher = fisher_information(tuningc[e][0], tuningc[e][1])
 	ax2 = ax.twinx()
 	ax2.spines['top'].set_visible(False)
 	ax2.spines['right'].set_visible(False)
 	ax2.spines['left'].set_visible(False)	
-	ax2.plot(fisher[0], fisher[1], '-', color = 'black', label = 'Fisher', linewidth = 0.5)
+	ax2.plot(fisher[0], fisher[1], '-', color = '#25393C', label = 'Fisher \n Information', linewidth = 1.0)
 	ax2.set_yticks([])
 	ax.plot(tuningc[e][0], tuningc[e][1], color = colors_[i], linewidth = 1.5)
-	ax.set_xlim(0, 2*np.pi)
-	ax.set_xticks([0, 2*np.pi])
-	ax.set_xticklabels(('0', '$2\pi$'))
-	ax.set_xlabel('Head-direction (rad)', labelpad = -3.9)
-	ax.set_ylabel('Firing rate', labelpad = 2.1)		
+	ax.set_xlim(limts[i])
+	# ax.set_xticks([0, 2*np.pi])
+	# ax.set_xticklabels(('0', '$2\pi$'))
+	ax.set_xlabel('Head-direction (rad)', labelpad = 0.0)
+	ax.set_ylabel('Firing rate (Hz)', labelpad = 2.1)		
 	ax.locator_params(axis='y', nbins = 3)
 	ax.locator_params(axis='x', nbins = 4)
 	if j == 0:
 		ax.set_title(title_[i], loc = 'right')
-	leg = ax2.legend(fontsize = 4)
+	leg = ax2.legend(fontsize = 4, loc = 'best')
 	leg.get_frame().set_linewidth(0.0)
 	# leg.get_frame().set_facecolor('white')
-	ax.set_title(title_[i])
+	ax.set_title(title_[i], fontsize = 6)
 
 ##PLOT 2#################################################################################################################
 # Centered density
@@ -295,11 +334,11 @@ for g,i in zip(['1.ADn', '1.Pos'], xrange(2)):
 	ax = subplot(gs[i])	
 	simpleaxis(ax)
 	for k in angdens[g].iterkeys():
-		plot(angdens[g][k][0], angdens[g][k][1]*100.0, '-', color = colors_[i], linewidth = 0.4, alpha = 0.5)
+		plot(angdens[g][k][0], angdens[g][k][1]*100.0, '-', color = colors_[i], linewidth = 0.4, alpha = 0.1)
 
 	plot(mean_angdens[g][0], mean_angdens[g][1]*100.0, '-', color = colors_[i], linewidth = 1.2, alpha = 1)		
 	axhline(5, linestyle = '--', color = 'black', linewidth=0.6)
-	ylabel("Density of angular splits$(\%)$")
+	ylabel("Density of angular splits $(\%)$")
 	xlim(-np.pi, np.pi)
 	xticks([-np.pi, 0, np.pi], ('$-\pi$', '0', '$\pi$'))
 	xlabel('Centered', labelpad = 0.4)
@@ -317,8 +356,9 @@ ai.set_xlim(-1, 1)
 ai.set_xticks([-1, 0, 1])
 ai.set_xticklabels([-1,'',1])
 ai.set_yticks([])
-ai.set_title("Corr(Fisher)", fontsize = 4, position = (0.5, 0.9))
+ai.set_title("<Fisher,Splits>", fontsize = 4, position = (0.5, 0.9))
 ai.set_xlabel("$R^2$", fontsize = 4, labelpad = -2.4)
+ai.set_ylabel("$\%$", fontsize = 4, labelpad = 0.5)
 
 aii = axes([tmp[1][0]+tmp[1][2]*0.7,tmp[1][1]+tmp[1][3]*0.8, 0.06, 0.07])
 aii.get_xaxis().tick_bottom()
@@ -328,8 +368,9 @@ aii.set_xlim(-1,1)
 aii.set_xticks([-1, 0, 1])
 aii.set_xticklabels([-1,'',1])
 aii.set_yticks([])
-aii.set_title("Corr(Fisher)", fontsize = 4, position = (0.5, 0.9))
+aii.set_title("<Fisher,Splits>", fontsize = 4, position = (0.5, 0.9))
 aii.set_xlabel("$R^2$", fontsize = 4, labelpad = -2.4)
+aii.set_ylabel("$\%$", fontsize = 4, labelpad = 0.5)
 
 
 
@@ -344,9 +385,10 @@ title2 = ['AD', 'Post-S']
 for e, i in zip(['ADn','Pos'],range(2)):			
 	ax = subplot(gs[i])
 	simpleaxis(ax)	
-	[ax.axvline(l, alpha = 0.1, color = colors_[i], linewidth = 0.1) for l in thresholds['xy'][e]['f0']]
-	[ax.axhline(l, alpha = 0.1, color = colors_[i], linewidth = 0.1) for l in thresholds['xy'][e]['f1']]	
-	ax.plot(data['x'].values[0:20000], data['y'].values[0:20000], '-', color = 'black', alpha = 1, linewidth = 0.5)				
+
+	[ax.axvline(l, alpha = 0.6, color = colors_[i], linewidth = 0.2) for l in np.unique(thresholds['xy'][e]['f0'])]
+	[ax.axhline(l, alpha = 0.6, color = colors_[i], linewidth = 0.2) for l in np.unique(thresholds['xy'][e]['f1'])]	
+	ax.plot(data['x'].values[0:6000], data['y'].values[0:6000], '-', color = 'grey', alpha = 1, linewidth = 0.4)				
 	ax.set_xlabel('x pos', labelpad = 0.4)
 	ax.set_ylabel('y pos')
 	ax.set_xticks([])
@@ -358,7 +400,7 @@ for e, i in zip(['ADn','Pos'],range(2)):
 for e, i in zip(['ADn','Pos'],range(2,4)):			
 	ax = subplot(gs[i])
 	simpleaxis(ax)	
-	im = ax.imshow(twod['3.'+e].transpose(), origin = 'lower', interpolation = 'nearest', aspect=  'equal', cmap = 'viridis')
+	im = ax.imshow(twod['3.'+e].transpose(), origin = 'lower', interpolation = 'nearest', aspect=  'equal', cmap = "gist_yarg")
 	ax.set_xlabel('x pos', labelpad = 0.4)
 	ax.set_ylabel('y pos')
 	ax.set_xticks([])
@@ -376,15 +418,17 @@ gs = gridspec.GridSpecFromSubplotSpec(1,1, subplot_spec = outer[3])
 
 subplot(gs[0])
 simpleaxis(gca())
-x = np.arange(2, dtype = float)
+x = np.arange(3, dtype = float)
 for g, i in zip(ratio.iterkeys(), xrange(2)):
 	tmp = []
 	for k in ratio[g].iterkeys():
 		# plot(x, ratio[g][k], 'o', alpha = 0.5, color = colors_[i], markersize = 2)
 		tmp.append(ratio[g][k])
 	tmp = np.array(tmp)
-	mean = [np.mean(tmp[:,0]), np.mean(tmp[:,1:])]	
-	sem = [np.std(tmp[:,0])/np.sqrt(np.size(tmp[:,0])),np.std(tmp[:,1:])/np.sqrt(np.size(tmp[:,1:].flatten()))]
+	# mean = [np.mean(tmp[:,0]), np.mean(tmp[:,1:])]	
+	mean = tmp.mean(0)
+	# sem = [np.std(tmp[:,0])/np.sqrt(np.size(tmp[:,0])),np.std(tmp[:,1:])/np.sqrt(np.size(tmp[:,1:].flatten()))]
+	sem = np.std(tmp, 0)/np.sqrt(np.size(tmp))
 	bar(x, mean, 0.4, yerr = sem, align='center',
         ecolor='k', alpha=.9, color=colors_[i], ec='w')
 	# xticks([])
@@ -394,45 +438,11 @@ for g, i in zip(ratio.iterkeys(), xrange(2)):
 
 locator_params(axis='y', nbins = 5)
 ylabel('Density of splits $(\%)$')
-xticks(np.arange(2)+0.205, ('Angle','Position'))
+xticks(np.arange(3)+0.205, ('Angle','X Pos', 'Y Pos'))
 
 
 
-# # COunt 
-# for i in xrange(2):
-# 	gs = gridspec.GridSpecFromSubplotSpec(1,1, subplot_spec = outer[i+2])		
-# 	ax = subplot(gs[0])
-# 	simpleaxis(ax)
-# 	group = order[i][0].split(".")[0]
-# 	for neuron in thresholds[group].iterkeys():
-# 		count = np.array([len(thresholds[group][neuron][f]) for f in thresholds[group][neuron].iterkeys()])
-# 		name = np.array([trans[f] for f in thresholds[group][neuron].keys()])
-# 		ax.plot(np.arange(len(count)), count, 'o--', 
-# 			color = colors_[i], 
-# 			markersize = 1.8, 
-# 			linewidth = 0.3,
-# 			markerfacecolor = colors_[i],
-# 			markeredgecolor = colors_[i],
-# 			alpha = 0.6)
-# 	for j in xrange(3):
-# 		neuron = order[i][j]
-# 		count = np.array([len(thresholds[group][neuron][f]) for f in thresholds[group][neuron].keys()])
-# 		name = np.array([trans[f] for f in thresholds[neuron.split(".")[0]][neuron].keys()])
-# 		ax.plot(np.arange(len(count)), count, 'o-', 
-# 			color = colors_[i], 
-# 			markersize = 3, 
-# 			linewidth = 1.2,
-# 			markerfacecolor = colors_[i],
-# 			markeredgecolor = colors_[i]
-# 			)
 
-	
-# 	ax.set_ylabel('Number of split')
-# 	ax.set_xticks(np.arange(3))
-# 	ax.set_xticklabels(tuple(name))
-# 	ax.set_xlabel('Feature')
-# 	ax.set_xlim(-0.2, 2.2)
-# 	ax.locator_params(axis='y', nbins = 3)
 
 
 savefig("../../figures/fig2.pdf", dpi = 900, bbox_inches = 'tight', facecolor = 'white')

@@ -42,8 +42,8 @@ data['vel'] 	= 	adrien_data['speed'].flatten() 			# velocity of the animal
 data['cos']		= 	np.cos(adrien_data['Ang'].flatten())	# cosinus of angular direction
 data['sin']		= 	np.sin(adrien_data['Ang'].flatten())	# sinus of angular direction
 # Firing data
-for i in xrange(adrien_data['Pos'].shape[1]): data['Pos'+'.'+str(i)] = adrien_data['Pos'][:,i]
-for i in xrange(adrien_data['ADn'].shape[1]): data['ADn'+'.'+str(i)] = adrien_data['ADn'][:,i]
+for i in xrange(adrien_data['Pos'].shape[1]): data['Pos'+'.'+str(i)] = adrien_data['Pos'][:,i].astype('float')
+for i in xrange(adrien_data['ADn'].shape[1]): data['ADn'+'.'+str(i)] = adrien_data['ADn'][:,i].astype('float')
 
 
 #######################################################################
@@ -86,6 +86,7 @@ def test_features(features, targets, learners = ['glm_pyglmnet', 'nn', 'xgb_run'
 		# TODO : make sure that 'ens' is the last learner
 		for method in learners_:
 			print('Running '+method+'...')                              
+			print 'targets ', targets[i]
 			Yt_hat, PR2 = fit_cv(X, y, algorithm = method, n_cv=8, verbose=1)       
 			Models[method]['Yt_hat'].append(Yt_hat)
 			Models[method]['PR2'].append(PR2)           

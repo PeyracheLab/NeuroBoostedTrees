@@ -138,14 +138,17 @@ def xgb_run(Xr, Yr, Xt):
     'eval_metric': "poisson-nloglik", #loglikelihood loss
     'seed': 2925, #for reproducibility
     'silent': 1,
-    'learning_rate': 0.05,
-    'min_child_weight': 2, 'n_estimators': 500,
-    'subsample': 0.6, 'max_depth': 100, 'gamma': 0.0}
+    'learning_rate': 0.1,
+    'min_child_weight': 2, 'n_estimators': 1000,
+    # 'subsample': 0.6, 
+    'max_depth': 5, 
+    'gamma': 0.5
+    }
     
     dtrain = xgb.DMatrix(Xr, label=Yr)
     dtest = xgb.DMatrix(Xt)
 
-    num_round = 500
+    num_round = 1000
     bst = xgb.train(params, dtrain, num_round)
 
     Yt = bst.predict(dtest)

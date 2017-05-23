@@ -125,24 +125,30 @@ colors=['#F5A21E', '#02A68E', '#EF3E34', '#134B64', '#FF07CD','b']
 ########################################################################
 # LOADING CLUSTER RESULTS 
 ########################################################################
+# automatic running of main_ang_grid_search.py
+os.system("python main_ang_grid_search.py")
 # # automatic fetching | transfer in ../data/results_pr2
-# os.system("scp -r viejo@guillimin.hpc.mcgill.ca:~/results_pr2_fig1/* ../data/results_pr2/")
+# os.system("scp viejo@guillimin.hpc.mcgill.ca:~/results_pr2_fig1/wake/* ../data/results_pr2/wake/")
 methods = ['kernel', 'mb_60', 'xgb_run', 'lin_comb']
 final_data = {  'ADn':{k:{'PR2':[]} for k in methods},
                 'Pos':{k:{'PR2':[]} for k in methods} }                
+nadn = 0
+npos = 0
 for file in os.listdir("../data/results_pr2/wake/"):
     print file
     tmp = pickle.load(open("../data/results_pr2/wake/"+file, 'rb'))
     for g in ['ADn', 'Pos']:
         for m in methods:
             final_data[g][m]['PR2'].append(tmp[g][m]['PR2'])
-            if g == 'ADn' and m == 'xgb_run':
-                print np.mean(tmp[g][m]['PR2'])
+        
+    nadn += tmp['ADn'][m]['PR2'].shape[0]
+    npos += tmp['Pos'][m]['PR2'].shape[0]
+
 for g in ['ADn', 'Pos']:
     for m in methods:
         final_data[g][m]['PR2'] = np.vstack(final_data[g][m]['PR2'])
 
-
+print "ADn = ", nadn, " Pos = ", npos
 
 
 ########################################################################
@@ -212,7 +218,7 @@ labels = {'mb_10':'MB \n 10 bins',
             'nn':'NN', 
             'xgb_run':"$\mathbf{XGB}$",
             'h1':"Linear \n (cos$\\theta$, sin$\\theta$)",
-            'kernel':"$3^{rd}$ order \n kernel"}
+            'kernel':"$6^{rd}$ order \n kernel"}
 
 
 figure(figsize = figsize(1))
@@ -237,7 +243,7 @@ for model in methods_to_plot:
         mean_pR2.append(np.mean(PR2_art))
         sem_pR2.append(np.std(PR2_art)/np.sqrt(np.size(PR2_art)))        
 bar(np.arange(np.size(mean_pR2)), mean_pR2, 0.4, align='center',
-        ecolor='k', alpha=.9, color='#330174', ec='w', yerr=np.array(sem_pR2), label = 'Antero-dorsal nucleus')
+        ecolor='k', alpha=1, color='#EE6C4D', ec='w', yerr=np.array(sem_pR2), label = 'Antero-dorsal nucleus')
 plot(np.arange(np.size(mean_pR2)), mean_pR2, 'k.', markersize=5)
 mean_pR2 = list()
 sem_pR2 = list()
@@ -250,7 +256,7 @@ for model in methods_to_plot:
         mean_pR2.append(np.mean(PR2_art))
         sem_pR2.append(np.std(PR2_art)/np.sqrt(np.size(PR2_art)))        
 bar(np.arange(np.size(mean_pR2))+0.405, mean_pR2, 0.4, align='center',
-        ecolor='k', alpha=.9, color='#249f87', ec='w', yerr=np.array(sem_pR2), label = 'Post-subiculum')
+        ecolor='k', alpha=1, color='#3D5A80', ec='w', yerr=np.array(sem_pR2), label = 'Post-subiculum')
 plot(np.arange(np.size(mean_pR2))+0.41, mean_pR2, 'k.', markersize=5)
 plot([-1, len(methods_to_plot)], [0,0],'--k', alpha=0.4)
 legend(bbox_to_anchor=(0.5, 1.25), loc='upper center', ncol=2, frameon = False)
@@ -263,25 +269,29 @@ ylabel("$Pseudo-R^2$")
 
 ## PLOT 2 ##############################################################################################################
 gs = gridspec.GridSpecFromSubplotSpec(1,2, hspace = 0.0, wspace= 0.4, subplot_spec = outer[1])        
-max_depth_step = 2**np.arange(1,11)
-max_trees_step = np.array([5,20,40,80,100,150,200,250,300,350,400,500]) # 5, 20, 100, 500
+# max_depth_step = 2**np.arange(1,11)
+# max_trees_step = np.array([5,20,40,80,100,150,200,250,300,350,400,500]) # 5, 20, 100, 500
+# max_depth_step = np.array([3,5,8,10,12,15,20,25,30,40])
+# max_trees_step = np.array([10, 50, 100, 150, 200, 500, 1000, 1500, 2000])
+max_depth_step = np.array([3,5,8,10,15,20,30,60,100]    )
+max_trees_step = np.array([30, 60, 90, 120, 150, 180, 210, 240, 400, 800])
 subplot(gs[0])
 ax = gca()
 ax.get_xaxis().tick_bottom()
 ax.get_yaxis().tick_left()
-k = 'Mouse25-140131.Pos.2'
-imshow(bic[k], origin = 'lower', interpolation = 'nearest', aspect = 'auto', cmap = "viridis")
+k = "Mouse28-140318.ADn.2"
+imshow(bic[k], origin = 'lower', interpolation = 'nearest', aspect = 'auto', cmap = "gist_yarg")
 cbar = colorbar(orientation = 'vertical', ticks=[np.min(bic[k])+300])
 cbar.set_ticklabels(['Best'])
 cbar.ax.tick_params(labelsize = 4)
 cbar.update_ticks()
 # yticks(np.arange(len(max_depth_step)), max_depth_step, fontsize = 6)
-yticks([0,2,4,6,8], [2,8,32,128,512], fontsize = 5)
-xticks([1,4,7,11], [20,100,250,500], fontsize = 5)
+yticks([0,2,4,6,8], max_depth_step[np.array([0,2,4,6,8])], fontsize = 5)
+xticks([0,2,4,6,8], max_trees_step[np.array([0,2,4,6,8])], fontsize = 5)
 ylabel("Depth", fontsize = 6)
 xlabel("Num trees", fontsize = 6)
 
-title("BIC(XGB) \n (one session)", fontsize = 6)
+title("BIC(XGB) \n (one neuron)", fontsize = 6)
 
 subplot(gs[1])
 ax = gca()
@@ -307,17 +317,15 @@ tmp = np.array(tmp).flatten()
 x = np.array(x)
 y = np.array(y)
 
-scatter(y, x, marker = 'o', c = 'black', s = tmp*2.0)
+scatter(y, x, marker = 'o', c = 'black', s = tmp*2.5)
 grid()
-xticks(np.arange(len(treesvalue)), treesvalue)
+xticks(np.hstack(([-1],np.arange(len(treesvalue)),[len(treesvalue)])), [max_trees_step[np.where(max_trees_step == treesvalue[0])[0][0]-1]]+list(treesvalue)+[max_trees_step[np.where(max_trees_step == treesvalue[-1])[0][0]+1]])
 yticks(np.arange(len(depthvalue)), depthvalue)
-# plot(bic['best'][:,1]+np.random.uniform(-1,1,n), bic['best'][:,0]+np.random.uniform(-1,1,n), 'o', color = 'black', markersize = 1.5)
-# yticks([2,4,8], [2,4,8], fontsize = 5)
-# xticks([40,100,150,200], [40,100,150,200], fontsize = 5)
+
 ylabel("Depth", fontsize = 6)
 xlabel("Num trees", fontsize = 6)
-
-title("Best BIC(XGB) \n (all sessions)", fontsize = 6)
+xlim(-1.5, 2.5)
+title("Best BIC(XGB) \n (all neurons)", fontsize = 6)
 
 show()
 
