@@ -44,6 +44,9 @@ data['sin']		= 	np.sin(adrien_data['Ang'].flatten())	# sinus of angular directio
 # Firing data
 for i in xrange(adrien_data['Pos'].shape[1]): data['Pos'+'.'+str(i)] = adrien_data['Pos'][:,i].astype('float')
 for i in xrange(adrien_data['ADn'].shape[1]): data['ADn'+'.'+str(i)] = adrien_data['ADn'][:,i].astype('float')
+#RANDOM DATA
+for i in xrange(5):
+	data['rand'+str(i)]	= 	np.random.uniform(0, 2*np.pi, len(adrien_data['Ang']))
 
 
 #######################################################################
@@ -102,8 +105,9 @@ def test_features(features, targets, learners = ['glm_pyglmnet', 'nn', 'xgb_run'
 #####################################################################
 combination = {	
 	14: {
-			'features'	:	['ang'],
-			'targets'	:	[i for i in list(data) if i.split(".")[0] in ['Pos', 'ADn']],			
+			'features'	:	['rand0', 'rand1', 'ang', 'rand2', 'rand3'],
+			# 'targets'	:	[i for i in list(data) if i.split(".")[0] in ['Pos', 'ADn']],			
+			'targets'	:	['ADn.0'],			
 		},	
 	}
 
@@ -112,37 +116,37 @@ combination = {
 # LEARNING XGB
 #####################################################################
 
-# bsts = {i:{} for i in combination.iterkeys()} # to keep the boosted tree
-# params = {'objective': "count:poisson", #for poisson output
-#     'eval_metric': "logloss", #loglikelihood loss
-#     'seed': 2925, #for reproducibility
-#     'silent': 0,
-#     'learning_rate': 0.1,
-#     'min_child_weight': 2, 'n_estimators': 1,
-#     'subsample': 0.6, 'max_depth': 1000, 'gamma': 0.01,
-#     'reg_alpha': 0.0,
-#     'reg_lambda':0.0}
+bsts = {i:{} for i in combination.iterkeys()} # to keep the boosted tree
+params = {'objective': "count:poisson", #for poisson output
+    'eval_metric': "logloss", #loglikelihood loss
+    'seed': 2925, #for reproducibility
+    'silent': 0,
+    'learning_rate': 0.1,
+    'min_child_weight': 2, 'n_estimators': 1,
+    'subsample': 0.6, 'max_depth': 5, 'gamma': 0.5,
+    'tree_method':'exact'}
 
-# num_round = 1
+num_round = 600
 
-# X = data['ang'].values
-# Y = data['Pos.5']
-# dtrain = xgb.DMatrix(np.vstack(X), label = np.vstack(Y))
-# bst = xgb.train(params, dtrain, num_round)
-# a = bst.get_dump()
-# print a[0]
-# sys.exit()
+X = data[['rand0', 'rand1', 'ang', 'rand2', 'rand3']].values
+Y = data['ADn.0']
+dtrain = xgb.DMatrix(np.vstack(X), label = np.vstack(Y))
+bst = xgb.train(params, dtrain, num_round)
 
-methods = ['xgb_run']
-for k in np.sort(combination.keys()):
-    features = combination[k]['features']
-    targets = combination[k]['targets'] 
-
-    results = test_features(features, targets, methods)
-    
-    
+a = extract_tree_threshold(bst)
 
 sys.exit()
+
+# methods = ['xgb_run']
+# for k in np.sort(combination.keys()):
+#     features = combination[k]['features']
+#     targets = combination[k]['targets'] 
+
+#     results = test_features(features, targets, methods)
+    
+    
+
+# sys.exit()
 
 
 #####################################################################

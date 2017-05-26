@@ -126,7 +126,7 @@ colors=['#F5A21E', '#02A68E', '#EF3E34', '#134B64', '#FF07CD','b']
 # LOADING CLUSTER RESULTS 
 ########################################################################
 # automatic running of main_ang_grid_search.py
-os.system("python main_ang_grid_search.py")
+# os.system("python main_ang_grid_search.py")
 # # automatic fetching | transfer in ../data/results_pr2
 # os.system("scp viejo@guillimin.hpc.mcgill.ca:~/results_pr2_fig1/wake/* ../data/results_pr2/wake/")
 methods = ['kernel', 'mb_60', 'xgb_run', 'lin_comb']
@@ -324,7 +324,7 @@ yticks(np.arange(len(depthvalue)), depthvalue)
 
 ylabel("Depth", fontsize = 6)
 xlabel("Num trees", fontsize = 6)
-xlim(-1.5, 2.5)
+xlim(-1.5, 3.5)
 title("Best BIC(XGB) \n (all neurons)", fontsize = 6)
 
 show()

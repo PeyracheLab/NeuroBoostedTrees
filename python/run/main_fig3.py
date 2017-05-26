@@ -151,49 +151,64 @@ def test_features(features, targets, learners = ['glm_pyglmnet', 'nn', 'xgb_run'
 #####################################################################
 # DATA LOADING | ALL SESSIONS WAKE
 #####################################################################
-os.system("scp -r guillaume@z620.mni.mcgill.ca:~/results_peer_fig3/ ../data/")
-data = {'pr2':{}, 'bsts':{}}
-for f in os.listdir("../data/results_peer_fig3/wake/"):	
-	if 'pr2' in f:
-		data['pr2'][f.split(".")[1]] = pickle.load(open("../data/results_peer_fig3/wake/"+f, 'rb'))
-	elif 'bsts' in f:
-		data['bsts'][f.split(".")[1]] = pickle.load(open("../data/results_peer_fig3/wake/"+f, 'rb'))
+# thresholds dict from z620 in ../data/results_peer_fig3/
+# good pr2 with 100 trees in ../data/results_peer_fig3_good_100trees
 
-# only loading pr2 values for the moment
-pr2_sleep = {}
-for ep in ['rem', 'sws']:
-	pr2_sleep[ep] = {}
-	for g in ['ADn', 'Pos']:
-		pr2_sleep[ep][g] = {}
-		for w in ['peer', 'cros']:
-			pr2_sleep[ep][g][w] = []
-			for f in os.listdir("../data/results_peer_fig3/"+ep+"/"):	
-				if 'pr2' in f:
-					tmp = pickle.load(open("../data/results_peer_fig3/"+ep+"/"+f, 'rb'))
-					pr2_sleep[ep][g][w].append(tmp[g][w]['PR2'])
-			pr2_sleep[ep][g][w] = np.vstack(pr2_sleep[ep][g][w])
+os.system("scp -r guillaume@z620.mni.mcgill.ca:~/results_peer_fig3/ ../data/")
+# os.system("scp -r viejo@guillimin.hpc.mcgill.ca:~/results_peer_fig3/ ../data/")
+
+
+thr_directory = "../data/results_peer_fig3"
+pr2_directory = "../data/results_peer_fig3"
+
+# THRESHOLDS
+data_thr = {}
+for ep in ['wake', 'rem', 'sws']:
+	data_thr[ep] = {}
+	for f in os.listdir(thr_directory+"/"+ep+"/"):
+		if 'bsts' in f:
+			data_thr[ep][f] = pickle.load(open(thr_directory+"/"+ep+"/"+f, 'rb'))
+
+# PR2
+data = {}
+# TO RECHANGE WHEN IT"S DONE IN Z620
+for ep in ['wake', 'rem', 'sws']:
+	data[ep] = {}
+	for f in os.listdir(pr2_directory+"/"+ep+"/"):
+		if 'pr2' in f:
+			data[ep][f.split(".")[1]] = pickle.load(open(pr2_directory+"/"+ep+"/"+f, 'rb'))
+
+data_pr2 = {}
+for g in ['ADn', 'Pos']:
+	data_pr2[g] = {}
+	for w in ['peer', 'cros']:
+		data_pr2[g][w] = {}
+		for e in ['wake', 'rem', 'sws']:
+			data_pr2[g][w][e] = []
+			for s in data[e].iterkeys():
+				data_pr2[g][w][e].append(data[e][s][g][w]['PR2'])
+			data_pr2[g][w][e] = np.vstack(data_pr2[g][w][e])
+
+
+
 # pr2_sleep = pickle.load(open("../data/fig3_pr2_sleep.pickle", 'rb'))
 
 
-final_data = {}
-bsts = {}
+# final_data = {}
+# CORRELATION
 corr = {}
-for g in ['ADn', 'Pos']:
-	final_data[g] = {}
-	bsts[g] = {}
-	corr[g] = {}
-	for t in ['peer', 'cros']:
-		final_data[g][t] = []
-		bsts[g][t] = {}
-		for s in data['pr2'].iterkeys():
-			final_data[g][t].append(data['pr2'][s][g][t]['PR2'])
-			if t=='peer':
-				tmp = data['pr2'][s][g][t]['corr'].item()  # TO CHANGE
-				for k in tmp.iterkeys():
-					corr[g][k] = tmp[k]
-			for k in data['bsts'][s][g][t].iterkeys():
-				bsts[g][t][k] = data['bsts'][s][g][t][k]
-		final_data[g][t] = np.vstack(final_data[g][t])
+# for g in ['ADn', 'Pos']:
+# 	final_data[g] = {}
+# 	corr[g] = {}
+# 	for t in ['peer', 'cros']:
+# 		final_data[g][t] = []
+# 		for s in data['pr2'].iterkeys():
+# 			final_data[g][t].append(data['pr2'][s][g][t]['PR2'])
+# 			# if t=='peer':
+# 			# 	tmp = data['pr2'][s][g][t]['corr'].item()  # TO CHANGE
+# 			# 	for k in tmp.iterkeys():
+# 			# 		corr[g][k] = tmp[k]
+# 		final_data[g][t] = np.vstack(final_data[g][t])
 
 
 # #####################################################################
@@ -209,15 +224,16 @@ for f in os.listdir("../data/results_density/wake/"):
 #####################################################################
 # EXTRACT TREE STRUCTURE
 #####################################################################
-names = pickle.load(open("../data/fig3_names.pickle", 'rb'))
+names = pickle.load(open("../data/results_peer_fig3/fig3_names.pickle", 'rb'))
 
 thresholds = {}
 for g in ['ADn', 'Pos']:
 	thresholds[g] = {}
 	for w in ['peer', 'cros']:
 		thresholds[g][w] = {}
-		for k in bsts[g][w].iterkeys():
-			thresholds[g][w][k] = extract_tree_threshold(bsts[g][w][k])		
+		for s in data_thr['wake'].iterkeys(): # sessions
+			for k in data_thr['wake'][s][g][w].iterkeys():		
+				thresholds[g][w][k] = data_thr['wake'][s][g][w][k]
 
 # need to sort the features by the number of splits
 sorted_features = {}
@@ -225,12 +241,14 @@ for g in thresholds.iterkeys():
 	sorted_features[g] = {}
 	for w in thresholds[g].iterkeys():
 		sorted_features[g][w] = {}
-		for k in thresholds[g][w].iterkeys(): # PREDICTED NEURONS
+		for k in thresholds[g][w].iterkeys(): # PREDICTED NEURONS			
 			count = np.array([len(thresholds[g][w][k][f]) for f in thresholds[g][w][k].iterkeys()])
 			name = np.array([names[g][w][k][int(f[1:])] for f in thresholds[g][w][k].iterkeys()])
 			sorted_features[g][w][k] = np.array([name[np.argsort(count)], np.sort(count)])
 
+#####################################################################
 # number of splits versus mean firing rate
+#####################################################################
 splitvar = {}
 plotsplitvar = {}
 for g in thresholds.iterkeys():
@@ -289,8 +307,10 @@ for g in corr.iterkeys():
 			peercorr[g].append(np.array([dist, float(corr[g][k][1][i])]))
 	peercorr[g] = np.array(peercorr[g])
 
-
-
+#####################################################################
+# TIME SPLIT LOADING
+#####################################################################
+time_data = pickle.load(open("../data/fig3_timesplit.pickle", 'rb'))
 
 #####################################################################
 # PLOTTING
@@ -367,8 +387,24 @@ labels_plot = [labels[m] for m in methods[0:-1]]
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 figure(figsize = figsize(1))
-outerspace = gridspec.GridSpec(1,2, width_ratios =[1.1,0.9])
+outerspace = gridspec.GridSpec(1,2, width_ratios =[1.1,0.9], wspace = 0.4)
 
 #################################################################
 # LEFT
@@ -376,7 +412,7 @@ outerspace = gridspec.GridSpec(1,2, width_ratios =[1.1,0.9])
 # outer = gridspec.GridSpec(outerspace[0], height_ratios=[0.5,1.2])
 
 # SUBPLOT 1 ################################################################
-outer = gridspec.GridSpecFromSubplotSpec(2,1,subplot_spec = outerspace[0], height_ratios=[0.5, 1.3])
+outer = gridspec.GridSpecFromSubplotSpec(2,1,subplot_spec = outerspace[0], height_ratios=[0.5, 1.3], hspace = 0.3)
 
 subplot(outer[0])
 simpleaxis(gca())
@@ -386,19 +422,14 @@ x = [0.0]
 color = []
 for g in ['ADn', 'Pos']:            
 	for w in ['peer', 'cros']:		
-		# wake
-		PR2_art = final_data[g][w]	
-		color.append(colors_[g])
-		y.append(np.mean(PR2_art))
-		err.append(np.std(PR2_art)/np.sqrt(np.size(PR2_art)))
-		x.append(x[-1]+0.62)
-		# REM / SWS
-		for e in ['rem', 'sws']:
-			PR2_art = pr2_sleep[e][g][w]	
+		for e in ['wake', 'rem', 'sws']:
+			PR2_art = data_pr2[g][w][e]
 			color.append(colors_[g])
 			y.append(np.mean(PR2_art))
 			err.append(np.std(PR2_art)/np.sqrt(np.size(PR2_art)))
-			x.append(x[-1]+0.62)			
+			x.append(x[-1]+0.62)
+		
+		
 		x[-1] += 0.3	
 	x[-1] += 0.3
 		
@@ -414,7 +445,7 @@ e_pos = err[6:12]
 
 ind = [0,3]
 bar(x_adn[ind], y_adn[ind], 0.4, align='center',
-			ecolor='k', color = colors_['ADn'], alpha=1, ec='w', yerr=e_adn[ind], label = 'Antero Dorsal nucleus')
+			ecolor='k', color = colors_['ADn'], alpha=1, ec='w', yerr=e_adn[ind], label = 'Antero Dorsal')
 bar(x_pos[ind], y_pos[ind], 0.4, align='center',
 			ecolor='k', color = colors_['Pos'], alpha=1, ec='w', yerr=e_pos[ind], label = 'Post Subiculum')
 ind = [1,4]
@@ -443,7 +474,7 @@ xticks(x[[1,4,7,10]],
 	fontsize = 5
 	)
 
-legend(bbox_to_anchor=(0.6, 1.1), loc='upper center', ncol=2, frameon = False)
+legend(bbox_to_anchor=(0.55, 1.19), loc='upper center', ncol=2, frameon = False, columnspacing = 0.6)
 
 # figtext(0.2, -0.2, "ADn $\Rightarrow$ ADn \n Post-S $\Rightarrow$ Post-S \n \scriptsize{(Features $\Rightarrow$ Target)}")
 # figtext(0.6, -0.14, "ADn $\Rightarrow$ Post-S \n Post-S $\Rightarrow$ ADn")
@@ -465,17 +496,18 @@ for g in plotsplitvar.keys():
 		simpleaxis(gca())
 		plot(plotdistance[g][w]['distance'], plotdistance[g][w]['nsplit'], 'o', color = colors_[g], markersize = 1)
 		slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(plotdistance[g][w]['distance'], plotdistance[g][w]['nsplit'])
-		print p_value
-		plot(plotdistance[g][w]['distance'], plotdistance[g][w]['distance']*slope + intercept, '--', color = 'black', linewidth = 0.9)
+		print r_value, p_value
+		x = np.array([np.min(plotdistance[g][w]['distance']), np.max(plotdistance[g][w]['distance'])])
+		plot(x, x*slope + intercept, '-', color = 'black', linewidth = 0.7)
 
 		locator_params(nbins=2)				
 		# ticklabel_format(style='sci', axis='x', scilimits=(0,0), fontsize = 4)
 		# ticklabel_format(style='sci', axis='y', scilimits=(0,0), fontsize = 4)
 		xticks([0, np.pi], ['0', '$\pi$'], fontsize = 4)
 		yticks(fontsize = 4)		
-		xlabel("Angular distance", fontsize = 4, labelpad = 0.4)				
-		ylabel("Number of splits", fontsize = 4)
-		title(title_[count], fontsize = 4)#, loc = 'left', y = 1.3)
+		xlabel("Angular distance", fontsize = 5, labelpad = 0.4)				
+		ylabel("Number of splits", fontsize = 5)
+		title(title_[count], fontsize = 6)#, loc = 'left', y = 1.3)
 		xlim(0, np.pi)
 
 
@@ -483,27 +515,22 @@ for g in plotsplitvar.keys():
 		simpleaxis(gca())		
 		plot(plotsplitvar[g][w]['meanf'], plotsplitvar[g][w]['nsplit'], 'o', color = colors_[g], markersize = 1)
 		slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(plotsplitvar[g][w]['meanf'], plotsplitvar[g][w]['nsplit'])
-		plot(plotsplitvar[g][w]['meanf'], plotsplitvar[g][w]['meanf']*slope + intercept, '--', color = 'black', linewidth = 0.9)
-		print p_value
+		x = np.array([np.min(plotsplitvar[g][w]['meanf']), np.max(plotsplitvar[g][w]['meanf'])])
+		plot(x, x*slope + intercept, '-', color = 'black', linewidth = 0.7)
+		print r_value, p_value
 		xticks(fontsize = 4)
 		yticks(fontsize = 4)		
-		xlabel("Mean firing rate", fontsize = 4, labelpad = 0.5)
-		ylabel("Number of splits", fontsize = 4)		
+		xlabel("Mean firing rate", fontsize = 5, labelpad = 0.5)
+		ylabel("Number of splits", fontsize = 5)		
 
 
 		subplot(gs[count+4])
 		simpleaxis(gca())		
-		# plot(plotsplitvar[g][w]['meanf'], plotsplitvar[g][w]['nsplit'], 'o', color = colors_[g], markersize = 1)
-		# for k in splitvar[g][w].keys():
-		# 	plot(splitvar[g][w][k][1], splitvar[g][w][k][0], '-', color = colors_[g], markersize = 1, alpha = 0.4)
-		plot(peercorr[g][:,0], peercorr[g][:,1], 'o', color = colors_[g], markersize = 1)
-		# locator_params(nbins=2)					
-		# ticklabel_format(style='sci', axis='x', scilimits=(0,0), fontsize = 4)
-		# ticklabel_format(style='sci', axis='y', scilimits=(0,0), fontsize = 4)
+		# plot(peercorr[g][:,0], peercorr[g][:,1], 'o', color = colors_[g], markersize = 1)
 		xticks(fontsize = 4)
 		yticks(fontsize = 4)		
-		xlabel("Angular distance", fontsize = 4, labelpad = 0.5)
-		ylabel("R", fontsize = 4)
+		xlabel("Angular distance", fontsize = 5, labelpad = 0.5)
+		ylabel("R", fontsize = 5)
 		
 
 		count += 1
@@ -511,19 +538,63 @@ for g in plotsplitvar.keys():
 #################################################################
 # RIGHT
 #################################################################
-outer = gridspec.GridSpecFromSubplotSpec(3,1,subplot_spec = outerspace[1])
+matplotlib.rcParams.update({"axes.labelsize": 	6,
+							"font.size": 		8,
+							"legend.fontsize": 	8,
+							"xtick.labelsize": 	5,
+							"ytick.labelsize": 	5,   
+							})               # Make the legend/label fonts a little smaller
+outer = gridspec.GridSpecFromSubplotSpec(3,1,subplot_spec = outerspace[1], hspace = 0.3)
+
+x = np.arange(37)*25 - 18*25
+ind = (x>-350)&(x<350)
+xt = x[ind]
 
 subplot(outer[0])
+simpleaxis(gca())		
+ep = 'wake'
+for k in xrange(len(time_data[ep])):
+	plot(xt, time_data[ep][k][ind], color = colors_['ADn'], alpha = 0.1, linewidth = 0.5)
+#mean
+plot([0], color = 'none', label = 'Wake')
+plot(xt, time_data[ep].mean(0)[ind], color = colors_['ADn'])
+ylabel("Density of splits (\%)", labelpad = 8)
+xlabel("Time (ms)")
+title("AD $\Rightarrow$ Post-S")
+legend(frameon = False)
+axvline(0, color = 'black', linewidth = 0.8)
+xlim(-325, 325)
 
-plot(np.random.rand(100))
 
 subplot(outer[1])
+simpleaxis(gca())		
+ep = 'rem'
+for k in xrange(len(time_data[ep])):
+	plot(xt, time_data[ep][k][ind], color = colors_['ADn'], alpha = 0.1, linewidth = 0.5)
+#mean
+plot([0], color = 'none', label = 'REM sleep')
+plot(xt,time_data[ep].mean(0)[ind], color = colors_['ADn'])
+ylabel("Density of splits (\%)", labelpad = 8)
+xlabel("Time (ms)")
+legend(frameon = False)
+axvline(0, color = 'black', linewidth = 0.8)
+xlim(-325, 325)
 
-plot(np.random.rand(100))
 
 subplot(outer[2])
-
-plot(np.random.rand(100))
+simpleaxis(gca())		
+ep = 'sws'
+for k in xrange(len(time_data[ep])):
+	if np.max(time_data[ep][k]) < 80.0:
+		plot(xt, time_data[ep][k][ind], color = colors_['ADn'], alpha = 0.1, linewidth = 0.5)
+#mean
+plot([0], color = 'none', label = 'Slow wave sleep')
+plot(xt, time_data[ep].mean(0)[ind], color = colors_['ADn'])
+ylabel("Density of splits (\%)", labelpad = 8)
+xlabel("Time (ms)")
+xlim(-325, 325)
+legend(frameon = False)
+axvline(0, color = 'black', linewidth = 0.8)
 
 
 savefig("../../figures/fig3.pdf", dpi=900, bbox_inches = 'tight', facecolor = 'white')

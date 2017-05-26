@@ -31,7 +31,7 @@ def xgb_decodage(Xr, Yr, Xt):
     'eval_metric': "mlogloss", #loglikelihood loss
     'seed': 2925, #for reproducibility
     'silent': 1,
-    'learning_rate': 0.1,
+    'learning_rate': 0.01,
     'min_child_weight': 2, 
     'n_estimators': 1000,
     # 'subsample': 0.5,
@@ -76,14 +76,14 @@ def tuning_curve(x, f, nb_bins):
     index = np.digitize(x, bins).flatten()    
     tcurve = np.array([np.sum(f[index == i]) for i in xrange(1, nb_bins+1)])    
     occupancy = np.array([np.sum(index == i) for i in xrange(1, nb_bins+1)])
-    tcurve = (tcurve/occupancy)*40.0
+    tcurve = (tcurve/occupancy)*5.0
     x = bins[0:-1] + (bins[1]-bins[0])/2.    
     return (x, tcurve)
 
 def bayesian_decoding(Xr, Yr, Xt, nb_bins = 60):
     # X firing rate
     # Y angular    
-    tau = 0.025
+    tau = 0.200
     pattern = np.zeros((nb_bins,Xr.shape[1]))
     for k in xrange(Xr.shape[1]):
         theta, tuning = tuning_curve(Yr.flatten(), Xr[:,k], nb_bins)
@@ -143,7 +143,7 @@ for ses in os.listdir("../data/sessions_nosmoothing_200ms/wake/"):
     wake_data = scipy.io.loadmat(os.path.expanduser('../data/sessions_nosmoothing_200ms/wake/'+ses))
     adn = wake_data['ADn'].shape[1]
     pos = wake_data['Pos'].shape[1]
-        
+    
     if adn >= 7 and pos >= 7:   
 #####################################################################
 # DATA ENGINEERING
@@ -157,7 +157,7 @@ for ses in os.listdir("../data/sessions_nosmoothing_200ms/wake/"):
         # Firing data
         for i in xrange(wake_data['Pos'].shape[1]): data['Pos'+'.'+str(i)] = wake_data['Pos'][:,i]
         for i in xrange(wake_data['ADn'].shape[1]): data['ADn'+'.'+str(i)] = wake_data['ADn'][:,i]
-
+        
 ########################################################################
 # COMBINATIONS DEFINITIONS
 ########################################################################
@@ -176,7 +176,7 @@ for ses in os.listdir("../data/sessions_nosmoothing_200ms/wake/"):
 # # MAIN LOOP FOR SCORE
 # ########################################################################
 
-        methods = ['xgb_decodage', 'lin_decodage', 'bayesian_decoding']
+        methods = ['xgb_decodage', 'bayesian_decoding']
         results = {}
         score = {}
         for k in np.sort(combination.keys()):
@@ -189,10 +189,12 @@ for ses in os.listdir("../data/sessions_nosmoothing_200ms/wake/"):
             for m in methods:
                 tmp = np.abs(y_hat[m]-y)
                 tmp[tmp>np.pi] = 2*np.pi - tmp[tmp>np.pi]
-                score[k][m] = np.sum(tmp)
+                score[k][m] = np.mean(tmp)
+                
 
             
         final_data[ses] = {}
+        final_data[ses]['real'] = y
         final_data[ses]['wake'] = {'score':score, 'output':results}
 
 # # ########################################################################
@@ -231,19 +233,21 @@ for ses in os.listdir("../data/sessions_nosmoothing_200ms/wake/"):
 
         final_data[ses]['sws'] = {'output':Yt}        
 
+# final_data = pickle.load(open("../data/fig4_200t.pickle", 'rb'))
+
 wakescore = {}
 for g in ['Pos', 'ADn']:
     wakescore[g] = []
-    for s in final_data.iterkeys():
+    for s in final_data.iterkeys(): # SESSION
+        print s        
         tmp = []
-        for m in methods:
+        for m in ['bayesian_decoding', 'xgb_decodage']:
             tmp.append(final_data[s]['wake']['score'][g][m])
-        tmp = np.array(tmp)
-        tmp = tmp/float(final_data[s]['wake']['output'][g]['bayesian_decoding'].shape[0])
+        tmp = np.array(tmp)        
         wakescore[g].append(tmp)
     wakescore[g] = np.array(wakescore[g])
 
-
+# sys.exit()
 
 ########################################################################
 # PLOTTING
@@ -277,7 +281,7 @@ pdf_with_latex = {                      # setup matplotlib to use latex for outp
     "font.serif": [],                   # blank entries should cause plots to inherit fonts from the document
     "font.sans-serif": [],
     "font.monospace": [],
-    "axes.labelsize": 10,               # LaTeX default is 10pt font.
+    "axes.labelsize": 8,               # LaTeX default is 10pt font.
     "font.size": 7,
     "legend.fontsize": 7,               # Make the legend/label fonts a little smaller
     "xtick.labelsize": 6,
@@ -301,17 +305,21 @@ labels = {  'lin_decodage':'Linear',
             'xgb_decodage':"$\mathbf{XGB}$",
             'bayesian_decoding':"Bayesian"}
 
+colors_ = {'ADn':'#EE6C4D', 'Pos':'#3D5A80'}
+
+
+
 
 figure(figsize = figsize(1))
 subplots_adjust()
 # subplots_adjust(hspace = 0.2, right = 0.999)
-outer = gridspec.GridSpec(1,2, wspace = 0.25,  width_ratios = [0.9,1])
+outer = gridspec.GridSpec(1,2, wspace = 0.25,  width_ratios = [0.5,1.3])
 ## PLOT 1 ##############################################################################################################
 gs = gridspec.GridSpecFromSubplotSpec(1,1, subplot_spec = outer[0])        
 subplot(gs[0])
 simpleaxis(gca())
 
-methods_to_plot = methods
+methods_to_plot = ['bayesian_decoding', 'xgb_decodage']
 labels_plot = [labels[m] for m in methods_to_plot]
 
 
@@ -322,7 +330,7 @@ for i in xrange(len(methods_to_plot)):
     mean_mse.append(np.mean(PR2_art))
     sem_mse.append(np.std(PR2_art)/np.sqrt(np.size(PR2_art)))
 bar(np.arange(np.size(mean_mse)), mean_mse, 0.4, align='center',
-        ecolor='k', alpha=.9, color='#330174', ec='w', yerr=np.array(sem_mse), label = 'Antero-dorsal nucleus')
+        ecolor='k', alpha=.9, color=colors_['ADn'], ec='w', yerr=np.array(sem_mse), label = 'Antero-dorsal nucleus')
 plot(np.arange(np.size(mean_mse)), mean_mse, 'k.', markersize=5)
 mean_mse = list()
 sem_mse = list()
@@ -331,74 +339,39 @@ for i in xrange(len(methods_to_plot)):
     mean_mse.append(np.mean(PR2_art))
     sem_mse.append(np.std(PR2_art)/np.sqrt(np.size(PR2_art)))
 bar(np.arange(np.size(mean_mse))+0.405, mean_mse, 0.4, align='center',
-        ecolor='k', alpha=.9, color='#249f87', ec='w', yerr=np.array(sem_mse), label = 'Post-subiculum')
+        ecolor='k', alpha=.9, color=colors_['Pos'], ec='w', yerr=np.array(sem_mse), label = 'Post-subiculum')
 plot(np.arange(np.size(mean_mse))+0.41, mean_mse, 'k.', markersize=5)
 plot([-1, len(methods_to_plot)], [0,0],'--k', alpha=0.4)
-legend(bbox_to_anchor=(0.5, 1.25), loc='upper center', ncol=2, frameon = False)
+legend(bbox_to_anchor=(0.55, 1.3), loc='upper center', ncol=1, frameon = False)
 xlim(-0.5,)
 # ylim(0.0, 0.8)
 xticks(np.arange(np.size(mean_mse))+0.205, labels_plot)
-ylabel("MSE")
+ylabel("Mean error (rad)")
 
-# ajouter h1 et h3
 
 ## PLOT 2 ##############################################################################################################
-# gs = gridspec.GridSpecFromSubplotSpec(1,2, hspace = 0.0, wspace= 0.4, subplot_spec = outer[1])        
-# max_depth_step = 2**np.arange(1,11)
-# max_trees_step = np.array([5,20,40,80,100,150,200,250,300,350,400,500]) # 5, 20, 100, 500
-# subplot(gs[0])
-# ax = gca()
-# ax.get_xaxis().tick_bottom()
-# ax.get_yaxis().tick_left()
-# k = 'Mouse25-140131.Pos.2'
-# imshow(bic[k], origin = 'lower', interpolation = 'nearest', aspect = 'auto', cmap = "viridis")
-# cbar = colorbar(orientation = 'vertical', ticks=[np.min(bic[k])+300])
-# cbar.set_ticklabels(['Best'])
-# cbar.ax.tick_params(labelsize = 4)
-# cbar.update_ticks()
-# # yticks(np.arange(len(max_depth_step)), max_depth_step, fontsize = 6)
-# yticks([0,2,4,6,8], [2,8,32,128,512], fontsize = 5)
-# xticks([1,4,7,11], [20,100,250,500], fontsize = 5)
-# ylabel("Depth", fontsize = 6)
-# xlabel("Num trees", fontsize = 6)
+gs = gridspec.GridSpecFromSubplotSpec(1,2, subplot_spec = outer[1])        
 
-# title("BIC(XGB) \n (one session)", fontsize = 6)
+ses_ex = 'boosted_tree.Mouse28-140313.mat'
 
-# subplot(gs[1])
-# ax = gca()
-# ax.get_xaxis().tick_bottom()
-# ax.get_yaxis().tick_left()
+title_ = ['XGB(AD)', 'XGB(Post-S)']
 
-# depthvalue = np.unique(bic['best'][:,0])
-# treesvalue = np.unique(bic['best'][:,1])
-# tmp = []
-# x = []
-# y = []
-# xt = []
-# yt = []
-# for i in depthvalue:
-#     tmp.append([])
-#     for j in treesvalue:
-#         tmp[-1].append(len(np.where((bic['best'][:,0] == i)&(bic['best'][:,1] == j))[0]))
-#         xt.append(i)
-#         yt.append(j)
-#         x.append(np.where(depthvalue == i)[0][0])
-#         y.append(np.where(treesvalue == j)[0][0])
-# tmp = np.array(tmp).flatten()
-# x = np.array(x)
-# y = np.array(y)
 
-# scatter(y, x, marker = 'o', c = 'black', s = tmp*2.0)
-# grid()
-# xticks(np.arange(len(treesvalue)), treesvalue)
-# yticks(np.arange(len(depthvalue)), depthvalue)
-# # plot(bic['best'][:,1]+np.random.uniform(-1,1,n), bic['best'][:,0]+np.random.uniform(-1,1,n), 'o', color = 'black', markersize = 1.5)
-# # yticks([2,4,8], [2,4,8], fontsize = 5)
-# # xticks([40,100,150,200], [40,100,150,200], fontsize = 5)
-# ylabel("Depth", fontsize = 6)
-# xlabel("Num trees", fontsize = 6)
 
-# title("Best BIC(XGB) \n (all sessions)", fontsize = 6)
+for i,s,g  in zip(xrange(2), ses_ex, ['ADn', 'Pos']):
+    subplot(gs[i])
+    simpleaxis(gca())
+    timestep = np.arange(150) + 9060 # 10 seconds
+    plot((timestep-np.min(timestep))*0.2, final_data[ses_ex]['real'][timestep], color = 'black', linewidth = 2)            
+    plot((timestep-np.min(timestep))*0.2, final_data[ses_ex]['wake']['output'][g]['xgb_decodage'][timestep], '-', color = colors_[g], linewidth = 1)
+    if i == 0:
+        ylabel("Angle prediction (rad)")
+    xlabel("Time (s)")
+    ylim(0, 2*np.pi)
+    yticks([0, np.pi, 2*np.pi], ['0', "$\pi$", "$2\pi$"])
+    title(title_[i])
+    locator_params(axis='x', nbins = 4)
+
 
 savefig("../../figures/fig4.pdf", dpi=900, bbox_inches = 'tight', facecolor = 'white')
 os.system("evince ../../figures/fig4.pdf &")

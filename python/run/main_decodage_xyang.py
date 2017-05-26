@@ -28,15 +28,16 @@ from sklearn.linear_model import LinearRegression
 #######################################################################
 def xgb_decodage(Xr, Yr, Xt):      
     # order is [ang, x, y]
-    index = np.arange(60*20*20).reshape(60,20,20)
-    # binning ang in 60 classes
-    angbins = np.linspace(0, 2*np.pi+1e-8, 61)
+    nbins_ang = 10
+    nbins_xy = 10
+    index = np.arange(nbins_ang*nbins_xy*nbins_xy).reshape(nbins_ang,nbins_xy,nbins_xy)
+    # binning ang in nbins_ang classes
+    angbins = np.linspace(0, 2*np.pi+1e-8, nbins_ang+1)
     angindex = np.digitize(Yr[:,0], angbins).flatten()-1
     # binning pos in 20 classes
-    posbins = np.linspace(0, 1+1e-8, 21)
+    posbins = np.linspace(0, 1+1e-8, nbins_xy+1)
     xposindex = np.digitize(Yr[:,1], posbins).flatten()-1
     yposindex = np.digitize(Yr[:,2], posbins).flatten()-1
-
     # setting class from index
     clas = np.zeros(Yr.shape[0])
     for i in xrange(Yr.shape[0]):
@@ -49,34 +50,46 @@ def xgb_decodage(Xr, Yr, Xt):
     'eval_metric': "mlogloss", #loglikelihood loss
     'seed': 2925, #for reproducibility
     'silent': 1,
-    'learning_rate': 0.1,
+    'learning_rate': 0.01,
     'min_child_weight': 2, 
     'n_estimators': 1000,
     # 'subsample': 0.5,
     'max_depth': 5, 
     'gamma': 0.5,
-    'num_class':index.max()}
+    'num_class':index.max()+1}
 
-    num_round = 1000
+    num_round = 40
     bst = xgb.train(params, dtrain, num_round)
     
     ymat = bst.predict(dtest)
 
-    return x[np.argmax(ymat,1)]
+    pclas = np.argmax(ymat, 1)
+    x, y, z = np.mgrid[0:nbins_ang,0:nbins_xy,0:nbins_xy]
+    clas_to_index = np.vstack((x.flatten(), y.flatten(), z.flatten())).transpose()
+    Yp = clas_to_index[pclas]
+    # returning real position
+    real = np.zeros(Yp.shape)
+    angx = angbins[0:-1] + (angbins[1]-angbins[0])/2.    
+    xy = posbins[0:-1] + (posbins[1]-posbins[0])/2.    
+    real[:,0] = angx[Yp[:,0]]
+    real[:,1] = xy[Yp[:,1]]
+    real[:,2] = xy[Yp[:,2]]
+    return real
+    # return x[np.argmax(ymat,1)]
 
 def fit_cv(X, Y, algorithm, n_cv=10, verbose=1):
     if np.ndim(X)==1:
         X = np.transpose(np.atleast_2d(X))
     cv_kf = KFold(n_splits=n_cv, shuffle=True, random_state=42)
     skf  = cv_kf.split(X)    
-    Y_hat=np.zeros(len(Y))    
+    Y_hat=np.zeros((len(Y),Y.shape[1]))
     
     for idx_r, idx_t in skf:        
         Xr = X[idx_r, :]
         Yr = Y[idx_r]
         Xt = X[idx_t, :]
         Yt = Y[idx_t]           
-        Yt_hat = eval(algorithm)(Xr, Yr, Xt)        
+        Yt_hat = eval(algorithm)(Xr, Yr, Xt)         
         Y_hat[idx_t] = Yt_hat
         
     return Y_hat
@@ -96,10 +109,11 @@ def test_decodage(features, targets, learners):
         
     for method in learners_:    
         print('Running '+method+'...')                              
-        Models[method] = fit_cv(X, Y, method, n_cv = 8)
+        Models[method] = fit_cv(X, Y, method, n_cv = 3)
 
 
     return Models
+
 
 final_data = {}
 for ses in os.listdir("../data/sessions_nosmoothing_200ms/wake/"):
@@ -151,6 +165,23 @@ for ses in os.listdir("../data/sessions_nosmoothing_200ms/wake/"):
         for k in np.sort(combination.keys()):
             features = combination[k]['features']
             targets = combination[k]['targets']     
+
+            y_hat = test_decodage(features, targets, methods)            
+
+            # y_hat = pickle.load(open("test_xyang.pickle", 'rb'))
+            sys.exit()
+            from pylab import *
+            figure()
+            plot(data['ang'].values, label = 'real')
+            plot(y_hat[:,0], label = 'pred')
+            legend()
+
+            figure()
+            plot(data['x'].values, data['y'].values, label = 'real')
+            plot(y_hat[:,1], y_hat[:,2], label = 'pred')
+            legend()
+
+            show()
 
             sys.exit()
             y_hat = test_decodage(features, targets, methods)            

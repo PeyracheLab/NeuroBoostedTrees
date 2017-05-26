@@ -24,7 +24,7 @@ import cPickle as pickle
 #####################################################################
 # DATA LOADING FROM CLUSTER
 #####################################################################
-#os.system("scp -r viejo@guillimin.hpc.mcgill.ca:~/results_density_fig2/wake ../data/results_density/")
+os.system("scp -r viejo@guillimin.hpc.mcgill.ca:~/results_density_fig2/wake ../data/results_density/")
 data = {}
 for f in os.listdir("../data/results_density/wake/"):
 	data[f.split(".")[1]] = pickle.load(open("../data/results_density/wake/"+f))
@@ -78,25 +78,33 @@ for g in groups:
 		xydens[g] = {}
 		mean_xydens[g] = {'x':[], 'y':[]}
 		twod_xydens[g] = []
-		for s in data.iterkeys(): # ALL SESSIONS
-			for k in data[s]['thr'][g].iterkeys(): # ALL NEURONS
-				xt = np.copy(data[s]['thr'][g][k]['f0'])
-				yt = np.copy(data[s]['thr'][g][k]['f1'])
-				# let's normalize xt and yt
-				xt -= xt.min()
-				xt /= xt.max()
-				yt -= yt.min()
-				yt /= yt.max()			
-				bins = np.linspace(0, 1, 20+1)
-				xh, bin_edges = np.histogram(xt, bins, density = False)
-				yh, bin_edges = np.histogram(yt, bins, density = False)
-				xh = xh/float(xh.sum())
-				yh = yh/float(yh.sum())			
-				x = bin_edges[0:-1] + (bin_edges[1]-bin_edges[0])/2.
-				xydens[g][k] = (x, xh, yh)
-				mean_xydens[g]['x'].append(xh)
-				mean_xydens[g]['y'].append(yh)
-				twod_xydens[g].append(np.vstack(xydens[g][k][1])*xydens[g][k][2])
+		for s in data.iterkeys(): # ALL SESSIONS			
+			for k in data[s]['thr'][g].iterkeys(): # ALL NEURONS								
+					bins = np.linspace(0, 1, 20+1)
+					x = bin_edges[0:-1] + (bin_edges[1]-bin_edges[0])/2.
+					if 'f0' in data[s]['thr'][g][k].keys():
+						xt = np.copy(data[s]['thr'][g][k]['f0'])
+						# xt -= xt.min()
+						# xt /= xt.max()	
+						xh, bin_edges = np.histogram(xt, bins, density = False)
+						# xh = xh/float(xh.sum())
+					else:
+						xh = np.zeros(len(x))
+
+					if 'f1' in data[s]['thr'][g][k].keys():
+						yt = np.copy(data[s]['thr'][g][k]['f1'])
+						# if len(np.unique(yt)) ==											
+						# yt -= yt.min()
+						# yt /= yt.max()
+						yh, bin_edges = np.histogram(yt, bins, density = False)
+						# yh = yh/float(yh.sum())			
+					else:
+						yh = np.zeros(len(x))
+					
+					xydens[g][k] = (x, xh, yh)
+					mean_xydens[g]['x'].append(xh)
+					mean_xydens[g]['y'].append(yh)
+					twod_xydens[g].append(np.vstack(xydens[g][k][1])+xydens[g][k][2]) # TO RECHANGE HERE
 
 		mean_xydens[g]['x'] = np.mean(mean_xydens[g]['x'], 0)
 		mean_xydens[g]['y'] = np.mean(mean_xydens[g]['y'], 0)
@@ -108,7 +116,13 @@ for g in ['2.Pos', '2.ADn']:
 	ratio[g.split('.')[1]] = {}
 	for s in data.iterkeys(): # ALL SESSIONS
 		for k in data[s]['thr'][g].iterkeys(): # ALL NEURONS	
-			ratio[g.split('.')[1]][k] = np.array([len(data[s]['thr'][g][k][f]) for f in ['f2', 'f0', 'f1']])
+			tmp = []
+			for f in ['f2', 'f0', 'f1']:
+				if f in data[s]['thr'][g][k].keys():
+					tmp.append(float(len(data[s]['thr'][g][k][f])))
+				else:
+					tmp.append(0.0)
+			ratio[g.split('.')[1]][k] = np.array(tmp)			
 			ratio[g.split('.')[1]][k] = ratio[g.split('.')[1]][k]/float(np.sum(ratio[g.split('.')[1]][k]))
 
 

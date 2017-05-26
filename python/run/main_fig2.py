@@ -286,7 +286,7 @@ title_ = ['Antero-dorsal nucleus', 'Post-subiculum']
 
 
 
-
+sys.exit()
 
 
 
@@ -334,7 +334,8 @@ for g,i in zip(['1.ADn', '1.Pos'], xrange(2)):
 	ax = subplot(gs[i])	
 	simpleaxis(ax)
 	for k in angdens[g].iterkeys():
-		plot(angdens[g][k][0], angdens[g][k][1]*100.0, '-', color = colors_[i], linewidth = 0.4, alpha = 0.1)
+		if np.max(angdens[g][k][1]*100.0) < 50:
+			plot(angdens[g][k][0], angdens[g][k][1]*100.0, '-', color = colors_[i], linewidth = 0.4, alpha = 0.1)
 
 	plot(mean_angdens[g][0], mean_angdens[g][1]*100.0, '-', color = colors_[i], linewidth = 1.2, alpha = 1)		
 	axhline(5, linestyle = '--', color = 'black', linewidth=0.6)
@@ -357,7 +358,7 @@ ai.set_xticks([-1, 0, 1])
 ai.set_xticklabels([-1,'',1])
 ai.set_yticks([])
 ai.set_title("<Fisher,Splits>", fontsize = 4, position = (0.5, 0.9))
-ai.set_xlabel("$R^2$", fontsize = 4, labelpad = -2.4)
+ai.set_xlabel("$r$", fontsize = 4, labelpad = -2.4)
 ai.set_ylabel("$\%$", fontsize = 4, labelpad = 0.5)
 
 aii = axes([tmp[1][0]+tmp[1][2]*0.7,tmp[1][1]+tmp[1][3]*0.8, 0.06, 0.07])
@@ -369,7 +370,7 @@ aii.set_xticks([-1, 0, 1])
 aii.set_xticklabels([-1,'',1])
 aii.set_yticks([])
 aii.set_title("<Fisher,Splits>", fontsize = 4, position = (0.5, 0.9))
-aii.set_xlabel("$R^2$", fontsize = 4, labelpad = -2.4)
+aii.set_xlabel("$r$", fontsize = 4, labelpad = -2.4)
 aii.set_ylabel("$\%$", fontsize = 4, labelpad = 0.5)
 
 
