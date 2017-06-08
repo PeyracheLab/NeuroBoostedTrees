@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
-    Fig 1 of the article : pseudo-R2 score for head-direction signal
-    File name: main_fig1_pr2.py
+    Fig 2 of the article : splits position within the tuning curve of the head-direction neuron
+    File name: main_fig2_splits.py
     Date created: 27/03/2017    
     Python Version: 2.7    
     Copyright (C) 2017 Guillaume Viejo
