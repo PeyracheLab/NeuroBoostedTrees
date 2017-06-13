@@ -98,6 +98,7 @@ def fisher_information(x, f):
 		slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(tmpx[i:i+3], tmpf[i:i+3])
 		slopes_.append(slope)			
 	fish = np.power(slopes_, 2)
+	fish = fish/(f+1e-4)
 	return (x, fish)
 
 #####################################################################
